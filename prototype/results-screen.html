@@ -1,0 +1,395 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Answers "What does the results screen look like?" (map issue #9).
+  Four structurally different results screens, switchable via ?variant=A|B|C|D and the
+  floating bar (← / → keys). ?case=laag shows the low-income / kwijtschelding case.
+  The simulation is a rough dummy so the numbers move plausibly. It is NOT the model:
+  crude flat tax, no Wsf averaging, made-up draagkracht threshold. Do not trust the euros.
+  Open by double-clicking; no build step.
+-->
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — resultaatscherm</title>
+<style>
+  :root {
+    color-scheme:dark;
+    --bg:#121214; --card:#1c1c20; --ink:#ececec; --muted:#9a9aa2; --line:#2e2e34;
+    --aflossen:#94a3b8; --aandelen:#60a5fa; --vast:#fbbf24; --mix:#a78bfa;
+    --win:#4ade80; --lose:#f87171; --warn-bg:#2a2210; --warn-line:#8a6a1f;
+    --grid:#2a2a30; --axis:#55555e; --mark:#ececec; --sel:#1e2a44;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding-bottom:90px; }
+  header.app { background:var(--card); border-bottom:1px solid var(--line); padding:12px 24px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+  header.app .brand { font-weight:700; }
+  header.app .inputs { color:var(--muted); font-size:13px; }
+  header.app .inputs a { color:var(--aandelen); }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; font-size:13px; }
+  .seg button { border:0; background:none; padding:4px 10px; cursor:pointer; color:var(--muted); }
+  .seg button.on { background:var(--ink); color:var(--bg); }
+  main { max-width:1080px; margin:0 auto; padding:24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  h1 { font-size:28px; line-height:1.2; margin:0 0 8px; }
+  h2 { font-size:18px; margin:0 0 12px; }
+  .muted { color:var(--muted); }
+  .small { font-size:13px; }
+  .eyebrow { text-transform:uppercase; letter-spacing:.06em; font-size:12px; color:var(--muted); margin:0 0 6px; }
+  .callout { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:10px; padding:12px 16px; }
+  .note { border-left:3px solid var(--line); padding:4px 12px; color:var(--muted); font-size:13px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:4px 12px; cursor:pointer; font-size:13px; }
+  .chip.on { border-color:var(--ink); font-weight:600; }
+  table { border-collapse:collapse; width:100%; }
+  td, th { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { font-size:12px; color:var(--muted); font-weight:500; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.sel td { background:var(--sel); }
+  tr.click { cursor:pointer; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 20px; margin-top:12px; }
+  details summary { cursor:pointer; font-weight:600; }
+  svg { display:block; width:100%; height:auto; }
+  svg text { font:11px system-ui, sans-serif; fill:var(--muted); }
+  .pos { color:var(--win); } .neg { color:var(--lose); }
+  .big { font-size:34px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+  .stack > * + * { margin-top:16px; }
+  @media (max-width:800px) { .grid2 { grid-template-columns:1fr; } main { padding:16px; } h1 { font-size:22px; } }
+  /* prototype switcher — deliberately not part of the design */
+  #switcher { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#f2f2f2; color:#111; border-radius:999px; padding:6px 10px; display:flex; gap:10px; align-items:center; box-shadow:0 6px 24px rgba(0,0,0,.6); font:13px system-ui, sans-serif; z-index:10; white-space:nowrap; }
+  #switcher button { background:#d4d4d4; color:#111; border:0; border-radius:999px; padding:4px 10px; cursor:pointer; }
+  #switcher .lbl { min-width:220px; text-align:center; }
+  #switcher .sep { width:1px; height:18px; background:#aaa; }
+</style>
+</head>
+<body>
+<header class="app" id="hdr"></header>
+<main id="root"></main>
+<div id="switcher"></div>
+
+<script>
+// ---------- dummy simulation (rough; shape only) ----------
+const N = 600, T = 420, YEARS = 35;
+const CASES = {
+  standaard: { label:'Standaard', debt:32000, surplus:200, income:null },
+  laag:      { label:'Laag inkomen', debt:32000, surplus:200, income:30000 },
+};
+const STRATS = [
+  { key:'aflossen', name:'Extra aflossen', a:1,   e:1,   color:'var(--aflossen)' },
+  { key:'aandelen', name:'Aandelen (S&P 500)', a:0, e:1, color:'var(--aandelen)' },
+  { key:'vast',     name:'Vastrentend 4,0%', a:0, e:0,   color:'var(--vast)' },
+  { key:'mix',      name:'Mix (50% aflossen, rest 70/30)', a:.5, e:.7, color:'var(--mix)' },
+];
+const SK = Object.fromEntries(STRATS.map(s => [s.key, s]));
+const COST = (0.0007 + 0.0015) / 12, SIG = 0.20 / Math.sqrt(12), MU = Math.log(1.054) / 12;
+const TAX = 0.30, INFL = 1.02, VAST = 0.04;
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd = mulberry32(7);
+const gauss = () => { let u=0,v=0; while(!u) u=rnd(); v=rnd(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
+const YLD = new Float64Array(N*T), EQ = new Float64Array(N*T);
+for (let s=0; s<N; s++) { let y=0.026; for (let t=0; t<T; t++) { y += 0.10*(0.03-y)/12 + 0.0065/Math.sqrt(12)*gauss(); YLD[s*T+t]=y; EQ[s*T+t]=MU-COST+SIG*gauss(); } }
+const MEDRATE = new Float64Array(T);
+for (let t=0; t<T; t++) { const col=[]; for (let s=0;s<N;s++) col.push(YLD[s*T+t]); col.sort((a,b)=>a-b); MEDRATE[t]=col[N>>1]; }
+
+const annuity = (d, r, n) => d<=0 ? 0 : r===0 ? d/n : d*(r/12)/(1-Math.pow(1+r/12,-n));
+// det: {rates, eqLog} for deterministic break-even runs
+function run(P, st, s, det) {
+  let debt=P.debt, debt0=P.debt, eq=0, basis=0, fx=0, rate=0, pay=0, pay0=0;
+  const yearly=[0-P.debt];
+  for (let t=0; t<T; t++) {
+    if (t%60===0) { rate=Math.max(0, det ? det.rates[t] : YLD[s*T+t]); pay=annuity(debt,rate,T-t); pay0=annuity(debt0,rate,T-t); }
+    const infl=Math.pow(INFL,t/12);
+    const cap = P.income==null ? Infinity : Math.max(0, 0.04*(P.income*Math.pow(1.024,t/12) - 27000*infl)/12);
+    debt0*=1+rate/12; const req0=Math.min(debt0,pay0,cap); debt0-=req0;
+    debt *=1+rate/12; const req =Math.min(debt, pay, cap); debt -=req;
+    let cash = req0 + P.surplus*infl - req;
+    const extra=Math.min(debt, cash*st.a); debt-=extra; cash-=extra;
+    eq = eq*Math.exp(det ? det.eqLog : EQ[s*T+t]) + cash*st.e; basis += cash*st.e;
+    fx = fx*(1+VAST/12*(1-TAX)) + cash*(1-st.e);
+    if ((t+1)%12===0) yearly.push(eq+fx-debt);
+  }
+  return { yearly, end: eq - TAX*Math.max(0,eq-basis) + fx, forgiven: debt };
+}
+const pct = (arr, p) => arr[Math.min(arr.length-1, Math.floor(p*arr.length))];
+function summarize(vals){ const a=[...vals].sort((x,y)=>x-y); return {p10:pct(a,.1),p25:pct(a,.25),p50:pct(a,.5),p75:pct(a,.75),p90:pct(a,.9)}; }
+
+function computeCase(P) {
+  const R = {};
+  for (const st of STRATS) {
+    const ends=new Float64Array(N), forg=new Float64Array(N), yr=[...Array(YEARS+1)].map(()=>new Float64Array(N));
+    for (let s=0;s<N;s++){ const r=run(P,st,s); ends[s]=r.end; forg[s]=r.forgiven; r.yearly.forEach((v,i)=>yr[i][s]=v); }
+    R[st.key] = { ends, forg, end:summarize(ends), years:yr.map(summarize) };
+  }
+  for (const st of STRATS) {
+    const base=R.aflossen.ends, me=R[st.key].ends, diff=new Float64Array(N); let w=0;
+    for (let s=0;s<N;s++){ diff[s]=me[s]-base[s]; if (diff[s]>0) w++; }
+    R[st.key].diff=diff; R[st.key].winkans=w/N; R[st.key].dmed=R[st.key].end.p50-R.aflossen.end.p50;
+  }
+  // kwijtschelding: the 0%-aflossen debt path
+  const f=[...R.aandelen.forg].sort((a,b)=>a-b);
+  R.kwijt = { median:pct(f,.5), prob:f.filter(x=>x>1).length/N };
+  // break-even: index return at which 100% aandelen ties extra aflossen (median rentepad, constant return)
+  const detDiff = r => { const det={rates:MEDRATE, eqLog:Math.log(1+r)/12-COST}; return run(P,SK.aandelen,0,det).end - run(P,SK.aflossen,0,det).end; };
+  let lo=-0.05, hi=0.15; for (let i=0;i<40;i++){ const m=(lo+hi)/2; detDiff(m)>0 ? hi=m : lo=m; }
+  R.breakeven=(lo+hi)/2;
+  R.curve=[...Array(21)].map((_,i)=>{ const r=i*0.005; return { r, d:detDiff(r) }; });
+  R.payment = annuity(P.debt, Math.max(0,YLD[0]), T);
+  return R;
+}
+const CACHE = {};
+const getCase = k => CACHE[k] ??= computeCase(CASES[k]);
+
+// ---------- state ----------
+const qs = new URLSearchParams(location.search);
+const S = { variant: qs.get('variant') ?? 'A', case: qs.get('case') ?? 'standaard', nominal: qs.get('unit')==='nominaal',
+            sel: 'aandelen', band: 'aandelen', year: 35, challenger: null };
+const VARIANTS = { A:'Oordeel eerst', B:'Grafiek eerst', C:'Bandbreedtes per strategie', D:'Duel: aflossen vs …' };
+function setParam(k, v){ const u=new URL(location); u.searchParams.set(k, v); history.replaceState(null,'',u); }
+
+// unit conversion: values are nominal at year y; euro's van nu divides by 2% inflation
+const conv = (v, y=YEARS) => S.nominal ? v : v/Math.pow(INFL, y);
+const eur = v => new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Math.round(v/100)*100);
+const eurk = v => (v<0?'−':'') + '€' + (Math.abs(v)>=1e6 ? (Math.abs(v)/1e6).toFixed(1).replace('.',',')+'M' : Math.round(Math.abs(v)/1000)+'k');
+const signed = v => (v>=0?'+':'−') + eur(Math.abs(v)).replace('-','');
+const pctf = (x, d=0) => (x*100).toFixed(d).replace('.',',') + '%';
+const unitLbl = () => S.nominal ? 'nominale euro\'s' : 'euro\'s van nu';
+
+function verdict(R) {
+  const base=R.aflossen.end.p50, band=Math.max(0.02*conv(base), 1000);
+  const best=STRATS.filter(s=>s.key!=='aflossen').sort((a,b)=>R[b.key].end.p50-R[a.key].end.p50)[0];
+  const d=conv(R[best.key].dmed), w=R[best.key].winkans;
+  if (Math.abs(d) < band) return { kind:'gelijk', best, text:`Aflossen en ${best.name.toLowerCase()} zijn ongeveer gelijk`, sub:`Het verschil in de mediaan is ${eur(Math.abs(d))}, te klein om een winnaar aan te wijzen.` };
+  if (d < 0) return { kind:'aflossen', best, text:'Extra aflossen levert naar verwachting het meest op', sub:`Het beste alternatief, ${best.name.toLowerCase()}, eindigt ${eur(-d)} lager; in ${pctf(1-w)} van de scenario's is aflossen beter.` };
+  return { kind:'beleggen', best, text:`${best.name.split(' (')[0]} levert naar verwachting ${eur(d)} meer op dan aflossen`, sub:`In ${pctf(w)} van de scenario's beter, in ${pctf(1-w)} slechter.` };
+}
+
+// ---------- chart helpers (plain SVG) ----------
+function ticks(min, max, n=5){ const s0=(max-min)/n||1, mag=10**Math.floor(Math.log10(s0)); const s=[1,2,2.5,5,10].map(m=>m*mag).find(x=>x>=s0); const o=[]; for(let v=Math.ceil(min/s)*s; v<=max+1e-9; v+=s) o.push(v); return o; }
+const lin = (d0,d1,r0,r1) => v => r0+(v-d0)/(d1-d0)*(r1-r0);
+
+function fanChart(R, keys, bandKey, { w=720, h=300, marker=null } = {}) {
+  const pad={l:56,r:16,t:12,b:28};
+  const ser = k => R[k].years.map((p,y)=>Object.fromEntries(Object.entries(p).map(([q,v])=>[q,conv(v,y)])));
+  const all = keys.flatMap(k => ser(k).flatMap(p => k===bandKey ? [p.p10,p.p90] : [p.p50]));
+  const lo=Math.min(0,...all), hi=Math.max(...all);
+  const x=lin(0,YEARS,pad.l,w-pad.r), y=lin(lo,hi,h-pad.b,pad.t);
+  let g='';
+  for (const v of ticks(lo,hi)) g+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${pad.l-6}" y="${y(v)+4}" text-anchor="end">${eurk(v)}</text>`;
+  for (let yr=0; yr<=YEARS; yr+=5) g+=`<text x="${x(yr)}" y="${h-8}" text-anchor="middle">${yr===0?'nu':'jaar '+yr}</text>`;
+  g+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)"/>`;
+  if (bandKey) {
+    const s=ser(bandKey), col=SK[bandKey].color;
+    const area=(a,b)=>s.map((p,i)=>`${x(i)},${y(p[a])}`).join(' ')+' '+s.map((p,i)=>`${x(i)},${y(p[b])}`).reverse().join(' ');
+    g+=`<polygon points="${area('p10','p90')}" fill="${col}" opacity=".12"/><polygon points="${area('p25','p75')}" fill="${col}" opacity=".2"/>`;
+  }
+  for (const k of keys) g+=`<polyline points="${ser(k).map((p,i)=>`${x(i)},${y(p.p50)}`).join(' ')}" fill="none" stroke="${SK[k].color}" stroke-width="${k===bandKey?2.5:1.5}"/>`;
+  if (marker!=null) g+=`<line x1="${x(marker)}" x2="${x(marker)}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--mark)" stroke-dasharray="3 3"/>`;
+  return `<svg viewBox="0 0 ${w} ${h}" role="img">${g}</svg>`;
+}
+
+function rangeStrips(R, { w=720, sel=null, rowH=44 } = {}) {
+  const pad={l:200,r:24,t:8,b:24}, h=pad.t+pad.b+rowH*STRATS.length;
+  const vals=STRATS.flatMap(s=>[conv(R[s.key].end.p10),conv(R[s.key].end.p90)]);
+  const lo=Math.min(0,...vals), hi=Math.max(...vals), x=lin(lo,hi,pad.l,w-pad.r);
+  let g='';
+  for (const v of ticks(lo,hi)) g+=`<line x1="${x(v)}" x2="${x(v)}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--grid)"/><text x="${x(v)}" y="${h-6}" text-anchor="middle">${eurk(v)}</text>`;
+  const bx=x(conv(R.aflossen.end.p50));
+  g+=`<line x1="${bx}" x2="${bx}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--aflossen)" stroke-dasharray="4 3"/>`;
+  STRATS.forEach((s,i)=>{
+    const e=R[s.key].end, cy=pad.t+rowH*i+rowH/2, c=s.color;
+    if (s.key===sel) g+=`<rect x="0" y="${cy-rowH/2}" width="${w}" height="${rowH}" fill="var(--sel)"/>`;
+    g+=`<g data-strat="${s.key}" style="cursor:pointer"><rect x="0" y="${cy-rowH/2}" width="${w}" height="${rowH}" fill="transparent"/>
+      <text x="8" y="${cy+4}" style="fill:var(--ink);font-size:13px">${s.name}</text>
+      <line x1="${x(conv(e.p10))}" x2="${x(conv(e.p90))}" y1="${cy}" y2="${cy}" stroke="${c}" stroke-width="4" opacity=".35"/>
+      <line x1="${x(conv(e.p25))}" x2="${x(conv(e.p75))}" y1="${cy}" y2="${cy}" stroke="${c}" stroke-width="10" opacity=".55"/>
+      <circle cx="${x(conv(e.p50))}" cy="${cy}" r="6" fill="${c}" stroke="var(--card)" stroke-width="2"/></g>`;
+  });
+  return `<svg viewBox="0 0 ${w} ${h}">${g}</svg>`;
+}
+
+function diffHist(R, key, { w=720, h=200 } = {}) {
+  const d=[...R[key].diff].map(v=>conv(v)).sort((a,b)=>a-b);
+  const lo=pct(d,.01), hi=pct(d,.99), B=36, step=(hi-lo)/B||1, bins=Array(B).fill(0);
+  d.forEach(v=>{ const i=Math.floor((v-lo)/step); if(i>=0&&i<B) bins[i]++; });
+  const pad={l:16,r:16,t:8,b:28}, x=lin(lo,hi,pad.l,w-pad.r), y=lin(0,Math.max(...bins),h-pad.b,pad.t);
+  let g='';
+  bins.forEach((c,i)=>{ const a=lo+i*step; g+=`<rect x="${x(a)+1}" y="${y(c)}" width="${Math.max(1,x(a+step)-x(a)-2)}" height="${y(0)-y(c)}" fill="${a+step/2>0?'var(--win)':'var(--lose)'}" opacity=".75"/>`; });
+  if (lo<0&&hi>0) g+=`<line x1="${x(0)}" x2="${x(0)}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--mark)"/><text x="${x(0)}" y="${h-8}" text-anchor="middle">gelijk</text>`;
+  g+=`<text x="${pad.l}" y="${h-8}">${eurk(lo)}</text><text x="${w-pad.r}" y="${h-8}" text-anchor="end">${eurk(hi)}</text>`;
+  return `<svg viewBox="0 0 ${w} ${h}">${g}</svg>`;
+}
+
+function iconArray(w) {
+  const wins=Math.round(w*100); let g='';
+  for (let i=0;i<100;i++){ const cx=14+(i%10)*26, cy=14+Math.floor(i/10)*26; g+=`<circle cx="${cx}" cy="${cy}" r="10" fill="${i<wins?'var(--win)':'var(--lose)'}" opacity=".8"/>`; }
+  return `<svg viewBox="0 0 262 262" style="max-width:262px">${g}</svg>`;
+}
+
+function curveChart(R, { w=720, h=220 } = {}) {
+  const pad={l:56,r:16,t:12,b:28}, pts=R.curve.map(p=>({r:p.r,d:conv(p.d)}));
+  const lo=Math.min(...pts.map(p=>p.d)), hi=Math.max(...pts.map(p=>p.d));
+  const x=lin(0,0.10,pad.l,w-pad.r), y=lin(Math.min(lo,0),Math.max(hi,0),h-pad.b,pad.t);
+  let g='';
+  for (const v of ticks(Math.min(lo,0),Math.max(hi,0),4)) g+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${pad.l-6}" y="${y(v)+4}" text-anchor="end">${eurk(v)}</text>`;
+  for (let r=0;r<=0.1001;r+=0.02) g+=`<text x="${x(r)}" y="${h-8}" text-anchor="middle">${pctf(r)}</text>`;
+  g+=`<line x1="${pad.l}" x2="${w-pad.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)"/>`;
+  g+=`<polyline points="${pts.map(p=>`${x(p.r)},${y(p.d)}`).join(' ')}" fill="none" stroke="var(--aandelen)" stroke-width="2.5"/>`;
+  g+=`<line x1="${x(0.054)}" x2="${x(0.054)}" y1="${pad.t}" y2="${h-pad.b}" stroke="var(--mark)" stroke-dasharray="3 3"/><text x="${x(0.054)+4}" y="${pad.t+10}">aanname 5,4%</text>`;
+  if (R.breakeven>0&&R.breakeven<0.1) g+=`<circle cx="${x(R.breakeven)}" cy="${y(0)}" r="5" fill="var(--mark)"/><text x="${x(R.breakeven)}" y="${y(0)-10}" text-anchor="middle" style="fill:var(--ink)">break-even ${pctf(R.breakeven,1)}</text>`;
+  return `<svg viewBox="0 0 ${w} ${h}">${g}</svg>`;
+}
+
+// ---------- shared bits ----------
+const kwijtCallout = R => R.kwijt.median>1 ? `<div class="callout"><strong>Je schuld wordt waarschijnlijk deels kwijtgescholden</strong> (mediaan ${eur(conv(R.kwijt.median))}). Extra aflossen verkleint vooral dat bedrag. <span class="muted small">Kans op kwijtschelding: ${pctf(R.kwijt.prob)}.</span></div>` : '';
+const breakevenLine = R => R.breakeven<0 ? `Aandelen winnen zelfs bij 0% rendement: wat je extra aflost, wordt anders toch kwijtgescholden.` : `Aandelen winnen zolang de index gemiddeld meer dan <strong>${pctf(R.breakeven,1)}</strong> per jaar oplevert (aanname: 5,4%).`;
+const mortgageNote = R => `<div class="note"><strong>Hypotheek (niet meegewogen).</strong> Met je DUO-maandbedrag van ca. ${eur(R.payment)} ligt je maximale hypotheek ongeveer ${eur(R.payment*175)} lager zolang je schuld loopt. Eerder schuldenvrij zijn haalt dat weg. <em>(placeholder — berekening nog niet bepaald)</em></div>`;
+const assumptions = `<ul class="small muted"><li>${N} scenario's voor rente en rendement; 35 jaar terugbetaalfase.</li><li>Aandelen: 5,4% per jaar (meetkundig), σ 20%, kosten 0,22%.</li><li>Vastrentend 4,0%. Inflatie 2,0%.</li><li>Box 3: grof benaderd in dit prototype.</li></ul>`;
+
+// ---------- variants ----------
+function VariantA(R) {   // single column story: verdict → all strategies → explore
+  const v=verdict(R), b=R[v.best.key];
+  const rows=STRATS.map(s=>{ const r=R[s.key]; return `<tr><td><span class="dot" style="background:${s.color}"></span>${s.name}${s.key==='aflossen'?' <span class="muted small">(vergelijkingsbasis)</span>':''}</td>
+    <td class="num">${eur(conv(r.end.p50))}</td>
+    <td class="num ${r.dmed>=0?'pos':'neg'}">${s.key==='aflossen'?'—':signed(conv(r.dmed))}</td>
+    <td class="num">${s.key==='aflossen'?'—':pctf(r.winkans)}</td>
+    <td class="num muted small">${eurk(conv(r.end.p10))} – ${eurk(conv(r.end.p90))}</td></tr>`; }).join('');
+  return `<div class="stack" style="max-width:760px;margin:0 auto">
+    <section class="card">
+      <p class="eyebrow">Uitkomst na 35 jaar · ${unitLbl()}</p>
+      <h1>${v.text}</h1>
+      <p style="font-size:17px;margin:0 0 16px">${v.sub}</p>
+      <div class="chips">
+        <span class="chip">Verwacht: ${eur(conv(b.end.p50))} vs ${eur(conv(R.aflossen.end.p50))}</span>
+        <span class="chip">Bandbreedte: ${eurk(conv(b.end.p10))} – ${eurk(conv(b.end.p90))}</span>
+      </div>
+      <p class="small muted" style="margin:12px 0 0">${breakevenLine(R)}</p>
+    </section>
+    ${kwijtCallout(R)}
+    <section class="card"><h2>Alle strategieën</h2>
+      <table><tr><th>Strategie</th><th class="num">Mediaan eindvermogen</th><th class="num">t.o.v. aflossen</th><th class="num">Winkans</th><th class="num">10%–90%</th></tr>${rows}</table>
+    </section>
+    <details><summary>Hoe ontwikkelt je vermogen zich?</summary><p class="small muted">Vermogen min schuld per jaar (mediaan); band = ${SK[v.best.key].name.toLowerCase()}.</p>${fanChart(R, STRATS.map(s=>s.key), v.best.key)}</details>
+    <details><summary>Hypotheek</summary>${mortgageNote(R)}</details>
+    <details><summary>Aannames</summary>${assumptions}</details>
+  </div>`;
+}
+
+function VariantB(R) {   // dashboard: fan chart dominant, year slider drives the side panel
+  const y=S.year, at = k => conv(R[k].years[y].p50, y);
+  const v=verdict(R);
+  const chips=STRATS.map(s=>`<button class="chip ${S.band===s.key?'on':''}" data-band="${s.key}"><span class="dot" style="background:${s.color}"></span>${s.name}</button>`).join('');
+  const side=STRATS.map(s=>`<tr><td><span class="dot" style="background:${s.color}"></span>${s.name}</td><td class="num">${eur(at(s.key))}</td></tr>`).join('');
+  return `<div class="grid2">
+    <section class="card">
+      <h2>Vermogen min schuld, per jaar <span class="muted small">(${unitLbl()})</span></h2>
+      <div class="chips" style="margin-bottom:8px">${chips}</div>
+      ${fanChart(R, STRATS.map(s=>s.key), S.band, { h:360, marker:y })}
+      <label class="small muted">Jaar: <strong>${y}</strong> <input type="range" min="0" max="35" value="${y}" id="yr" style="width:60%;vertical-align:middle"></label>
+      <p class="small muted">Lijnen: mediaan per strategie. Band: 25–75% (donker) en 10–90% (licht) van de gekozen strategie.</p>
+    </section>
+    <aside class="stack">
+      <section class="card"><p class="eyebrow">Oordeel</p><strong>${v.text}.</strong><p class="small" style="margin:6px 0 0">${v.sub}</p></section>
+      <section class="card"><p class="eyebrow">In jaar ${y} (mediaan)</p><table>${side}</table>
+        ${y===35?'<p class="small muted">Jaar 35 = eindvermogen na belasting.</p>':''}</section>
+      ${kwijtCallout(R)}
+      <section class="card small">${breakevenLine(R)}</section>
+      ${mortgageNote(R)}
+    </aside>
+  </div>`;
+}
+
+function VariantC(R) {   // end-state ranges for every strategy; click one to drill in
+  const s=SK[S.sel], r=R[s.key], v=verdict(R);
+  const detail = s.key==='aflossen'
+    ? `<p class="muted">Extra aflossen is de vergelijkingsbasis. Kies een andere strategie om het verschil te zien.</p>`
+    : `<h2>${s.name} vs extra aflossen</h2>
+       <p>In <strong class="pos">${pctf(r.winkans)}</strong> van de scenario's beter, in <strong class="neg">${pctf(1-r.winkans)}</strong> slechter. Mediaan verschil <strong>${signed(conv(r.dmed))}</strong>.</p>
+       ${diffHist(R, s.key)}
+       <p class="small muted">Elke staaf = scenario's met dat verschil in eindvermogen (zelfde rente en rendement voor beide).</p>`;
+  return `<div class="stack">
+    <section class="card">
+      <p class="eyebrow">Eindvermogen na 35 jaar · ${unitLbl()}</p>
+      <h1 style="font-size:22px">${v.text}</h1>
+      ${rangeStrips(R, { sel:S.sel })}
+      <p class="small muted">Stip = mediaan · dikke balk = middelste helft · dunne balk = 10%–90% · stippellijn = mediaan extra aflossen. Klik een strategie.</p>
+    </section>
+    <div class="grid2">
+      <section class="card">${detail}</section>
+      <aside class="stack">${kwijtCallout(R)}<section class="card small">${breakevenLine(R)}</section>${mortgageNote(R)}
+        <details><summary>Aannames</summary>${assumptions}</details></aside>
+    </div>
+  </div>`;
+}
+
+function VariantD(R) {   // head-to-head: pick a challenger, count wins out of 100 futures
+  const v=verdict(R), c=SK[S.challenger ?? v.best.key], rc=R[c.key], rb=R.aflossen;
+  const opts=STRATS.filter(s=>s.key!=='aflossen').map(s=>`<option value="${s.key}" ${s.key===c.key?'selected':''}>${s.name}</option>`).join('');
+  const side=(s,r)=>`<div style="text-align:center"><p class="eyebrow"><span class="dot" style="background:${s.color}"></span>${s.name}</p>
+      <div class="big">${eur(conv(r.end.p50))}</div><p class="small muted">verwacht · 10%–90%: ${eurk(conv(r.end.p10))} – ${eurk(conv(r.end.p90))}</p></div>`;
+  return `<div class="stack" style="max-width:860px;margin:0 auto">
+    <section class="card">
+      <p class="eyebrow">Uitkomst na 35 jaar · ${unitLbl()}</p>
+      <h1>${v.text}</h1>
+      <p style="font-size:17px;margin:0">${v.sub}</p>
+    </section>
+    <section class="card">
+      <p class="small muted" style="text-align:center">Vergelijk extra aflossen met <select id="chal">${opts}</select></p>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center;margin-top:12px">
+        ${side(SK.aflossen, rb)}<div class="muted" style="font-size:20px">vs</div>${side(c, rc)}
+      </div>
+    </section>
+    <section class="card" style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+      ${iconArray(rc.winkans)}
+      <div style="flex:1;min-width:240px">
+        <h2>Van 100 mogelijke toekomsten wint ${c.name.split(' (')[0].toLowerCase()} er ${Math.round(rc.winkans*100)}</h2>
+        <p>In de groene wint ${c.name.split(' (')[0].toLowerCase()}, in de rode had extra aflossen meer opgeleverd. Mediaan verschil: <strong class="${rc.dmed>=0?'pos':'neg'}">${signed(conv(rc.dmed))}</strong>.</p>
+        ${kwijtCallout(R)}
+      </div>
+    </section>
+    <section class="card"><h2>Alle strategieën</h2>
+      ${rangeStrips(R, { sel:c.key })}
+      <p class="small muted">Eindvermogen · stip = mediaan · dikke balk = middelste helft · dunne balk = 10%–90% · stippellijn = mediaan extra aflossen. Klik een strategie om hem hierboven te vergelijken.</p>
+    </section>
+    <section class="card"><h2>Bij welk rendement is het gelijk?</h2>
+      <p class="small muted">Verschil 100% aandelen − extra aflossen, als aandelen elk jaar precies dit rendement halen.</p>
+      ${curveChart(R)}<p class="small">${breakevenLine(R)}</p></section>
+    <details><summary>Hoe ontwikkelt je vermogen zich?</summary><p class="small muted">Vermogen min schuld per jaar; lijn = mediaan, band = 25–75% en 10–90% van ${c.name.toLowerCase()}.</p>${fanChart(R, ['aflossen', c.key], c.key)}</details>
+    ${mortgageNote(R)}
+  </div>`;
+}
+const RENDER = { A:VariantA, B:VariantB, C:VariantC, D:VariantD };
+
+// ---------- shell ----------
+function render() {
+  const P=CASES[S.case], R=getCase(S.case);
+  document.getElementById('hdr').innerHTML = `<div><span class="brand">Schuldhulp</span>
+      <span class="inputs"> · Schuld ${eur(P.debt)} · ${eur(P.surplus)}/mnd over · inkomen ${P.income?eur(P.income):'niet opgegeven'} · <a href="#">aanpassen</a></span></div>
+    <div class="seg"><button data-unit="nu" class="${S.nominal?'':'on'}">Euro's van nu</button><button data-unit="nominaal" class="${S.nominal?'on':''}">Nominaal</button></div>`;
+  document.getElementById('root').innerHTML = RENDER[S.variant](R);
+  const ks=Object.keys(VARIANTS);
+  document.getElementById('switcher').innerHTML = `<button id="prev">←</button><span class="lbl">${S.variant} — ${VARIANTS[S.variant]}</span><button id="next">→</button>
+    <span class="sep"></span><button id="case">Voorbeeld: ${CASES[S.case].label}</button>`;
+}
+function cycle(d){ const ks=Object.keys(VARIANTS); S.variant=ks[(ks.indexOf(S.variant)+d+ks.length)%ks.length]; setParam('variant',S.variant); render(); }
+document.addEventListener('click', e => {
+  const t=e.target.closest('button, [data-strat]'); if (!t) return;
+  if (t.id==='prev') cycle(-1); else if (t.id==='next') cycle(1);
+  else if (t.id==='case') { S.case = S.case==='standaard'?'laag':'standaard'; setParam('case',S.case); render(); }
+  else if (t.dataset.unit) { S.nominal = t.dataset.unit==='nominaal'; setParam('unit',t.dataset.unit); render(); }
+  else if (t.dataset.band) { S.band=t.dataset.band; render(); }
+  else if (t.dataset.strat && S.variant==='D') { if (t.dataset.strat!=='aflossen') { S.challenger=t.dataset.strat; render(); } }
+  else if (t.dataset.strat) { S.sel=t.dataset.strat; render(); }
+});
+document.addEventListener('input', e => { if (e.target.id==='yr') { S.year=+e.target.value; render(); document.getElementById('yr').focus(); } });
+document.addEventListener('change', e => { if (e.target.id==='chal') { S.challenger=e.target.value; render(); } });
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+  if (e.key==='ArrowLeft') cycle(-1); if (e.key==='ArrowRight') cycle(1);
+});
+render();
+</script>
+</body>
+</html>
