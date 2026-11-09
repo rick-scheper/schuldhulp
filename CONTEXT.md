@@ -15,9 +15,18 @@
 - **Inleg** — an optional one-off amount (existing savings) allocated at the start, alongside the surplus.
 - **Toetsingsinkomen** — the income DUO bases draagkracht on (roughly the verzamelinkomen).
 - **Vastrentend** — a stable investment that earns one fixed annual rate (e.g. a deposito or staatsobligatie held to maturity).
+- **Dividendlek** — dividend withholding tax lost inside an index fund, which the investor cannot reclaim; a hidden yearly drag on the equity return on top of the fund's TER.
 - **Strategy** — a plan for the surplus and inleg: extra aflossen, invest in equities, vastrentend, or a mix.
 - **Mix** — a user-defined strategy: a share to extra aflossen, the rest split between equities and vastrentend.
-- **Scenario** — one simulated future (interest-rate path, market returns, income path) a strategy is evaluated against.
+- **Scenario** — one simulated future (interest-rate path, market returns, income path) a strategy is evaluated against. Called a **toekomst** in the UI.
 - **Forfait** — the current box 3 regime: tax on a fictive return per asset category (banktegoeden, overige bezittingen, schulden), capped at the actual return via **tegenbewijs**.
 - **Werkelijk rendement** — the planned box 3 regime (target 2029, not yet law): tax on actual annual return; gains on financial instruments (shares, funds, bonds) are taxed only when realised, while bank balances and debts are taxed on their annual result.
 - **Overig box 3-vermogen** — the user's box 3 wealth outside the strategy (e.g. existing savings not used as inleg); it decides how much of the heffingsvrij vermogen the strategy can use.
+- **Eindvermogen** — the after-tax value of a strategy's pot at the end of the terugbetaalfase, with the pot treated as sold; by then the debt is either paid off or forgiven, so nothing is subtracted. The number strategies are scored on.
+- **Kwijtgescholden bedrag** — the debt left at the end of the term that is forgiven; shown for information, never added to eindvermogen.
+- **Euro's van nu** — amounts deflated to today's purchasing power with the model's price inflation assumption; the default unit for results.
+- **Baseline** — the 100% extra aflossen strategy, against which every other strategy is compared.
+- **Winkans** — the share of scenarios in which a strategy ends with a higher eindvermogen than the baseline in the same scenario.
+- **Ongeveer gelijk** — the verdict when two strategies' median eindvermogen differs by too little to call a winner.
+- **Doorsnee uitkomst** — the user-facing name for a strategy's median eindvermogen: half of the scenarios end better, half worse. Not an expected value (mean); never phrased as "naar verwachting".
+- **Break-even** — the constant yearly index return at which 100% equities ends level with 100% extra aflossen.
