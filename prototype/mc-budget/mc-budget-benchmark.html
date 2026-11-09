@@ -1,0 +1,305 @@
+<title>MC Budget Benchmark</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  PROTOTYPE — throwaway. Answers ticket "What Monte Carlo budget fits in the browser?"
+  Rough but cost-representative monthly simulation: Vasicek 5y yield -> DUO rentepad (12-mo avg, 0% floor,
+  5-yr rentevaste blocks), lognormal equities (TER + dividendlek), 4 strategies (aflossen / equities /
+  vastrentend / mix) on common random numbers, DUO annuity recalcs + draagkracht cap, yearly box 3
+  (forfait+tegenbewijs to 2028, werkelijk rendement from 2029 with realisation + loss carry-forward),
+  optional paired "forfait blijft" run, per-year records for koopbudget slider + fan chart.
+  Tax numbers are approximate; this measures cost, not correctness. Plain JS (same speed as compiled TS).
+-->
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#ddd; --accent:#2b6cb0; --warn:#b7791f; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111; --fg:#eee; --muted:#999; --line:#333; --accent:#63b3ed; --warn:#f6ad55; color-scheme:dark; } }
+  :root[data-theme="dark"] { --bg:#111; --fg:#eee; --muted:#999; --line:#333; --accent:#63b3ed; --warn:#f6ad55; color-scheme:dark; }
+  body { background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; margin:0; padding-block:16px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); max-width:900px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 12px; }
+  button { font:inherit; padding:8px 14px; margin:0 8px 8px 0; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:6px; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:default; }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:13px; }
+  th, td { border-bottom:1px solid var(--line); padding:4px 6px; text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  .wrap { overflow-x:auto; }
+  #spinner { display:inline-block; width:12px; height:12px; background:var(--accent); vertical-align:middle; margin-left:6px; }
+  pre { white-space:pre-wrap; font-size:12px; border:1px solid var(--line); padding:8px; border-radius:6px; }
+  .warn { color:var(--warn); }
+</style>
+<h1>Monte Carlo budget benchmark <small style="color:var(--muted)">(prototype)</small></h1>
+<p class="sub">Runs N = 1k / 5k / 10k toekomsten × 4 strategies × 420 months, with and without the paired "forfait blijft" run, on the main thread and in a Web Worker. The square spins while the page is responsive — watch it freeze on main-thread runs.<span id="spinner"></span></p>
+<div>
+  <button id="quick">Quick suite (~1 rep)</button>
+  <button id="full">Full suite (3 reps, median)</button>
+  <button id="copy" disabled>Copy results</button>
+</div>
+<p id="status" class="sub">Idle.</p>
+<div class="wrap"><table id="tbl"><thead><tr>
+  <th>run</th><th>N</th><th>paired</th><th>sim ms</th><th>post ms</th><th>total ms</th><th>longest frame gap ms</th><th>records MB</th><th>slider ms</th>
+</tr></thead><tbody></tbody></table></div>
+<h3>Sanity (last run, N=10k)</h3>
+<pre id="sanity">—</pre>
+<h3>Device</h3>
+<pre id="device"></pre>
+
+<script id="core">
+// ===== simulation core (shared by main thread, worker, and node runner) =====
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function makeGauss(seed) {
+  const u = mulberry32(seed); let spare = 0, has = false;
+  return function () {
+    if (has) { has = false; return spare; }
+    let a, b, s;
+    do { a = 2 * u() - 1; b = 2 * u() - 1; s = a * a + b * b; } while (s >= 1 || s === 0);
+    const m = Math.sqrt(-2 * Math.log(s) / s);
+    spare = b * m; has = true; return a * m;
+  };
+}
+
+const P = {
+  months: 420, startYear: 2027, debt: 30000, duoRate0: 0.0257, surplus: 300, inleg: 0,
+  income0: 42000, incomeGrowth: 0.025, wml: 28000, overig: 10000,
+  kappa: 0.10, theta: 0.030, sigma: 0.0065, y0: 0.029,
+  muLog: Math.log(1.054), sigEq: 0.20, drag: 0.0022 + 0.0015,
+  fixRate: 0.040, infl: 0.02,
+  // box 3 (approx 2026 numbers)
+  fBank: 0.0128, fInv: 0.06, fDebt: 0.027, hvv: 59357, drempel: 3800, rate: 0.36,
+  hvr: 1800, werkelijkFrom: 2029,
+  // strategies: share to [aflossen, equities, vastrentend]
+  strategies: [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0.5, 0.3, 0.2]],
+  recordYears: 36, // 0..35 (fan chart needs full horizon; koopbudget slider needs 0..15)
+};
+
+function simulate(N, paired, seed) {
+  const T = P.months, S = P.strategies.length, Y = P.recordYears, LAG = 15;
+  const gauss = makeGauss(seed);
+  const y = new Float64Array(T + LAG);
+  const g = new Float64Array(T);          // monthly equity growth factor
+  const duo = new Float64Array(T);        // monthly DUO rate (annual)
+  // outputs
+  const eind = new Float32Array(N * S);           // real eindvermogen
+  const eindF = paired ? new Float32Array(N * S) : null; // "forfait blijft"
+  const kwijt = new Float32Array(N * S);
+  const rec = new Float32Array(N * S * Y * 3);    // per year: pot after tax, restschuld, termijn
+  // deterministic income path (monthly draagkracht cap)
+  const cap = new Float64Array(T);
+  for (let m = 0; m < T; m++) {
+    const inc = P.income0 * Math.pow(1 + P.incomeGrowth, Math.floor(m / 12));
+    cap[m] = Math.max(0, 0.04 * (inc - P.wml * Math.pow(1 + P.infl, Math.floor(m / 12))) / 12);
+  }
+  const ea = Math.exp(-P.kappa / 12), sd = P.sigma * Math.sqrt((1 - ea * ea) / (2 * P.kappa));
+  const muM = (P.muLog - P.drag) / 12, sM = P.sigEq / Math.sqrt(12);
+
+  for (let n = 0; n < N; n++) {
+    // --- scenario paths (common random numbers across strategies) ---
+    y[0] = P.y0;
+    for (let m = 1; m < T + LAG; m++) y[m] = P.theta + (y[m - 1] - P.theta) * ea + sd * gauss();
+    let r = P.duoRate0;
+    for (let m = 0; m < T; m++) {
+      if (m >= 36 && (m - 36) % 60 === 0) { // new rentevaste periode: 12-mo avg ending ~3 months earlier
+        let s = 0; for (let k = m; k < m + 12; k++) s += y[k]; // index shifted by LAG
+        r = Math.max(0, s / 12);
+      }
+      duo[m] = r;
+      g[m] = Math.exp(muM + sM * gauss());
+    }
+    for (let s = 0; s < S; s++) {
+      runStrategy(n, s, false, eind, kwijt, rec, cap, g, duo);
+      if (paired) runStrategy(n, s, true, eindF, null, null, cap, g, duo);
+    }
+  }
+  return { eind, eindF, kwijt, rec };
+}
+
+function runStrategy(n, s, forfaitAlways, eindOut, kwijtOut, rec, cap, g, duo) {
+  const T = P.months, S = P.strategies.length, Y = P.recordYears;
+  const sh = P.strategies[s], shA = sh[0], shE = sh[1], shF = sh[2];
+  const invShare = shE + shF;
+  const fixM = Math.pow(1 + P.fixRate, 1 / 12) - 1;
+  let debt = P.debt, req = 0, eq = 0, basis = 0, fix = P.inleg, eqStartYear = 0;
+  let intPaidY = 0, fixIntY = 0, realisedY = 0, eqGainY = 0, carry = 0;
+  let deflator = 1;
+  for (let m = 0; m < T; m++) {
+    const rm = duo[m] / 12;
+    if (m === 0 || m === 36 || (m > 36 && (m - 36) % 60 === 0) || m % 12 === 0) {
+      const left = T - m;
+      const ann = rm === 0 ? debt / left : debt * rm / (1 - Math.pow(1 + rm, -left));
+      req = Math.min(ann, cap[m]);
+    }
+    // DUO
+    const intr = debt * rm; debt += intr; intPaidY += intr;
+    const pay = Math.min(req, debt); debt -= pay;
+    let budget = P.surplus + (req - pay); // freed termijn after payoff goes to the pot
+    let toE = budget * shE, toF = budget * shF;
+    const extra = budget * shA;
+    if (debt > 0) {
+      const x = Math.min(extra, debt); debt -= x;
+      const rest = extra - x;
+      if (invShare > 0) { toE += rest * shE / invShare; toF += rest * shF / invShare; } else toF += rest;
+    } else if (invShare > 0) { toE += extra * shE / invShare; toF += extra * shF / invShare; } else toF += extra;
+    // pot
+    const before = eq; eq *= g[m]; eqGainY += eq - before;
+    eq += toE; basis += toE;
+    const fi = fix * fixM; fix += fi + toF; fixIntY += fi;
+    // yearly box 3 + records
+    if (m % 12 === 11) {
+      const year = P.startYear + (m / 12 | 0);
+      let tax = 0;
+      if (forfaitAlways || year < P.werkelijkFrom) {
+        const bank = fix + P.overig, inv = eq, debts = Math.max(0, debt - P.drempel);
+        const grond = bank + inv - debts;
+        if (grond > P.hvv) {
+          const rend = bank * P.fBank + inv * P.fInv - debts * P.fDebt;
+          const aandeel = (grond - P.hvv) / grond;
+          const actual = eqGainY + fixIntY + P.overig * P.fBank - intPaidY;
+          const voordeel = Math.min(rend, Math.max(0, actual)) * aandeel; // tegenbewijs cap
+          tax = P.rate * Math.max(0, voordeel);
+        }
+      } else {
+        let inc = fixIntY + P.overig * P.fBank + realisedY - intPaidY + carry;
+        if (inc < 0) { carry = inc < -500 ? inc : 0; inc = 0; } else carry = 0;
+        tax = P.rate * Math.max(0, inc - P.hvr);
+      }
+      if (tax > 0) { // pay from vastrentend first, then sell equities (realises gains)
+        const fromF = Math.min(fix, tax); fix -= fromF; const rest = tax - fromF;
+        if (rest > 0 && eq > 0) {
+          const frac = Math.min(1, rest / eq);
+          realisedY = (eq - basis) * frac; basis -= basis * frac; eq -= rest;
+        } else realisedY = 0;
+      } else realisedY = 0;
+      intPaidY = 0; fixIntY = 0; eqGainY = 0;
+      deflator *= 1 + P.infl;
+      if (rec) {
+        const yi = (m / 12 | 0) + 1;
+        if (yi < Y) {
+          const latent = year + 1 >= P.werkelijkFrom && !forfaitAlways ? P.rate * Math.max(0, eq - basis) : 0;
+          const o = ((n * S + s) * Y + yi) * 3;
+          rec[o] = (eq + fix - latent) / deflator; rec[o + 1] = debt / deflator; rec[o + 2] = req;
+        }
+      }
+    }
+  }
+  const exitTax = forfaitAlways ? 0 : P.rate * Math.max(0, eq - basis - P.hvr);
+  eindOut[n * S + s] = (eq + fix - exitTax) / deflator;
+  if (kwijtOut) kwijtOut[n * S + s] = debt / deflator;
+}
+
+// post-processing the results screen needs
+function quantile(sorted, q) { const i = q * (sorted.length - 1), lo = i | 0; return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (i - lo); }
+function column(arr, N, S, s) { const c = new Float32Array(N); for (let n = 0; n < N; n++) c[n] = arr[n * S + s]; return c; }
+function postProcess(res, N) {
+  const S = P.strategies.length, Y = P.recordYears, out = { strat: [], flip: null };
+  for (let s = 0; s < S; s++) {
+    const c = column(res.eind, N, S, s).sort();
+    let win = 0; for (let n = 0; n < N; n++) if (res.eind[n * S + s] > res.eind[n * S]) win++;
+    out.strat.push({ p10: quantile(c, .1), p50: quantile(c, .5), p90: quantile(c, .9), winkans: win / N });
+  }
+  // fan chart: yearly P10/P50/P90 of pot for every strategy over full horizon
+  const tmp = new Float32Array(N); out.fan = [];
+  for (let s = 0; s < S; s++) for (let yi = 1; yi < Y; yi++) {
+    for (let n = 0; n < N; n++) tmp[n] = res.rec[((n * S + s) * Y + yi) * 3];
+    tmp.sort(); out.fan.push(quantile(tmp, .1), quantile(tmp, .5), quantile(tmp, .9));
+  }
+  if (res.eindF) { // verdict-flip check: does challenger-vs-baseline sign change under "forfait blijft"?
+    out.flip = [];
+    for (let s = 1; s < S; s++) {
+      const a = column(res.eindF, N, S, s).sort(), b = column(res.eindF, N, S, 0).sort();
+      out.flip.push(Math.sign(quantile(a, .5) - quantile(b, .5)) !== Math.sign(out.strat[s].p50 - out.strat[0].p50));
+    }
+  }
+  return out;
+}
+// one koopbudget-slider move: median + "N van de 100 pot covers debt" for the duel pair at year yi
+function sliderMove(res, N, yi) {
+  const S = P.strategies.length, Y = P.recordYears, t = new Float32Array(N); let cover = 0;
+  for (const s of [0, 1]) {
+    for (let n = 0; n < N; n++) {
+      const o = ((n * S + s) * Y + yi) * 3; t[n] = res.rec[o] + 251 * res.rec[o + 2] * 0; // mortgage term placeholder
+      if (res.rec[o] >= res.rec[o + 1]) cover++;
+    }
+    t.sort(); quantile(t, .5);
+  }
+  return cover;
+}
+function runOnce(N, paired) {
+  const t0 = performance.now();
+  const res = simulate(N, paired, 12345);
+  const t1 = performance.now();
+  const post = postProcess(res, N);
+  const t2 = performance.now();
+  let s0 = performance.now(); for (let yi = 0; yi <= 15; yi++) sliderMove(res, N, yi); const slider = (performance.now() - s0) / 16;
+  const bytes = res.eind.byteLength * (paired ? 3 : 2) + res.rec.byteLength;
+  return { sim: t1 - t0, post: t2 - t1, slider, mb: bytes / 1048576, sanity: post };
+}
+</script>
+
+<script>
+const coreSrc = document.getElementById('core').textContent;
+const workerSrc = coreSrc + `\nonmessage = e => { const { N, paired } = e.data; const r = runOnce(N, paired); postMessage(r); };`;
+const workerUrl = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+
+// responsiveness probe: spinner + longest rAF gap
+const spin = document.getElementById('spinner'); let angle = 0, last = performance.now(), maxGap = 0;
+function frame(t) { maxGap = Math.max(maxGap, t - last); last = t; angle = (angle + 6) % 360; spin.style.transform = `rotate(${angle}deg)`; requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+const status = t => document.getElementById('status').textContent = t;
+const rows = []; const tbody = document.querySelector('#tbl tbody');
+const fmt = x => x >= 100 ? x.toFixed(0) : x.toFixed(1);
+function addRow(r) {
+  rows.push(r);
+  const tr = document.createElement('tr');
+  tr.innerHTML = [r.mode, r.N, r.paired ? 'yes' : 'no', fmt(r.sim), fmt(r.post), fmt(r.total), fmt(r.gap), r.mb.toFixed(1), r.slider.toFixed(2)].map(x => `<td>${x}</td>`).join('');
+  tbody.appendChild(tr);
+}
+const median = a => a.slice().sort((x, y) => x - y)[a.length >> 1];
+
+async function measure(mode, N, paired, reps) {
+  const runs = [];
+  for (let i = 0; i < reps; i++) {
+    await nextFrame(); maxGap = 0; last = performance.now();
+    const t0 = performance.now(); let r;
+    if (mode === 'main') r = runOnce(N, paired);
+    else r = await new Promise(res => { const w = new Worker(workerUrl); w.onmessage = e => { res(e.data); w.terminate(); }; w.postMessage({ N, paired }); });
+    const total = performance.now() - t0;
+    await nextFrame();
+    runs.push({ ...r, total, gap: maxGap });
+  }
+  const pick = k => median(runs.map(r => r[k]));
+  const row = { mode, N, paired, sim: pick('sim'), post: pick('post'), total: pick('total'), gap: pick('gap'), mb: runs[0].mb, slider: pick('slider') };
+  addRow(row);
+  if (N === 10000) showSanity(runs[0].sanity);
+}
+function showSanity(s) {
+  const names = ['aflossen', 'equities', 'vastrentend', 'mix'];
+  document.getElementById('sanity').textContent = s.strat.map((x, i) =>
+    `${names[i].padEnd(12)} P10 €${x.p10.toFixed(0).padStart(7)}  P50 €${x.p50.toFixed(0).padStart(7)}  P90 €${x.p90.toFixed(0).padStart(7)}  winkans ${(x.winkans * 100).toFixed(0)}%`).join('\n')
+    + (s.flip ? `\nverdict flips under "forfait blijft": ${s.flip.map((f, i) => names[i + 1] + '=' + f).join(', ')}` : '');
+}
+async function suite(reps) {
+  document.querySelectorAll('button').forEach(b => b.disabled = true);
+  tbody.innerHTML = ''; rows.length = 0;
+  status('Warming up JIT…'); await nextFrame(); runOnce(300, true);
+  for (const mode of ['worker', 'main']) for (const N of [1000, 5000, 10000]) for (const paired of [false, true]) {
+    status(`Running ${mode} N=${N} paired=${paired}…`); await measure(mode, N, paired, reps);
+  }
+  status('Done. Tap "Copy results" and paste them back.');
+  document.querySelectorAll('button').forEach(b => b.disabled = false);
+}
+document.getElementById('quick').onclick = () => suite(1);
+document.getElementById('full').onclick = () => suite(3);
+document.getElementById('copy').onclick = () => {
+  const txt = document.getElementById('device').textContent + '\n' +
+    ['mode N paired sim post total gap MB slider'].concat(rows.map(r => [r.mode, r.N, r.paired ? 'y' : 'n', fmt(r.sim), fmt(r.post), fmt(r.total), fmt(r.gap), r.mb.toFixed(1), r.slider.toFixed(2)].join(' '))).join('\n');
+  navigator.clipboard.writeText(txt).then(() => status('Copied.'), () => { document.getElementById('sanity').textContent = txt; status('Clipboard blocked — results shown under Sanity, copy manually.'); });
+};
+document.getElementById('device').textContent = `UA: ${navigator.userAgent}\ncores: ${navigator.hardwareConcurrency}  deviceMemory: ${navigator.deviceMemory ?? '?'} GB`;
+</script>
