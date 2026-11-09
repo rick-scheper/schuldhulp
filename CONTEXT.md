@@ -18,3 +18,6 @@
 - **Strategy** — a plan for the surplus and inleg: extra aflossen, invest in equities, vastrentend, or a mix.
 - **Mix** — a user-defined strategy: a share to extra aflossen, the rest split between equities and vastrentend.
 - **Scenario** — one simulated future (interest-rate path, market returns, income path) a strategy is evaluated against.
+- **Forfait** — the current box 3 regime: tax on a fictive return per asset category (banktegoeden, overige bezittingen, schulden), capped at the actual return via **tegenbewijs**.
+- **Werkelijk rendement** — the planned box 3 regime (target 2029, not yet law): tax on actual annual return; gains on financial instruments (shares, funds, bonds) are taxed only when realised, while bank balances and debts are taxed on their annual result.
+- **Overig box 3-vermogen** — the user's box 3 wealth outside the strategy (e.g. existing savings not used as inleg); it decides how much of the heffingsvrij vermogen the strategy can use.
