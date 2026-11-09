@@ -30,3 +30,5 @@
 - **Ongeveer gelijk** — the verdict when two strategies' median eindvermogen differs by too little to call a winner.
 - **Doorsnee uitkomst** — the user-facing name for a strategy's median eindvermogen: half of the scenarios end better, half worse. Not an expected value (mean); never phrased as "naar verwachting".
 - **Break-even** — the constant yearly index return at which 100% equities ends level with 100% extra aflossen.
+- **Hypotheekmoment** — the moment, in years from now, at which the user expects to apply for a mortgage; the mortgage side note is evaluated there.
+- **Koopbudget** — what a strategy leaves the user to buy a house with at the hypotheekmoment: the maximum mortgage given the remaining DUO termijn, plus the after-tax pot. The pot is either kept as eigen inbreng or used to pay off DUO first, whichever gives the larger budget. Shown for information, never scored.
