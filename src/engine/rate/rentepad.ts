@@ -1,12 +1,13 @@
+import { REKENREGELS } from '../rekenregels';
 import { addMonths, type YearMonth } from '../time';
 import { gridMonths, SF35_TERM_MONTHS } from '../duo/loan';
 import { publishedRate, SF35_PUBLISHED_RATES } from './published';
 import { duoRateForYear, type YieldSeries } from './rule';
 
 /** SF35 aanloopfase: 2 years before the terugbetaalfase (Wsf art. 6.5). */
-export const AANLOOPFASE_MONTHS = 24;
+export const AANLOOPFASE_MONTHS = REKENREGELS.duo.aanloopfaseMonths;
 /** A rentevaste periode lasts 5 calendar years (Wsf art. 6.4 lid 3). */
-export const RENTEVASTE_PERIODE_YEARS = 5;
+export const RENTEVASTE_PERIODE_YEARS = REKENREGELS.duo.rentevastePeriodeYears;
 
 /**
  * - `jaar`: before the aanloopfase (still studying) the rate resets every calendar year;

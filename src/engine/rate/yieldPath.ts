@@ -1,3 +1,4 @@
+import { REKENREGELS } from '../rekenregels';
 import { addMonths, monthsBetween, type YearMonth } from '../time';
 import { monthlySeries, type YieldPoint, type YieldSeries } from './rule';
 
@@ -16,21 +17,15 @@ export const DEFAULT_VASICEK: VasicekParams = { kappa: 0.1, theta: 0.03, sigma: 
 
 /**
  * The start value: the 5-year yield on the last fixing day of the snapshot month, interpolated
- * from the DSTA MTS fixings (see fixtures/dsta-5y). Refreshed each release.
+ * from the DSTA MTS fixings (see fixtures/dsta-5y). Lives in the rekenregels config (#29), refreshed each October.
  */
-export const YIELD_SNAPSHOT = {
-  month: { year: 2026, month: 10 } as YearMonth,
-  date: '2026-10-30',
-  value: 0.032155,
-  source: 'DSTA MTS fixings, publication 02-11-2026, interpolated to 5.0 years (fixtures/dsta-5y/daily-5y.csv)',
-  retrieved: '2026-11-12',
-} as const;
+export const YIELD_SNAPSHOT = REKENREGELS.yield.snapshot;
 
 /**
  * Observed monthly means of the 5-year yield for months after the last published rate's
  * window (Oct 2026 starts the 2028 window). From fixtures/dsta-5y/daily-5y.csv; a test checks them.
  */
-export const OBSERVED_5Y_MONTHLY: YieldSeries = [{ year: 2026, month: 10, value: 0.0329045 }];
+export const OBSERVED_5Y_MONTHLY: YieldSeries = REKENREGELS.yield.observedMonthly;
 
 /**
  * The σ = 0 Vasicek path: y(t) = θ + (y₀ − θ)·e^(−κt), monthly, from the month after `start`

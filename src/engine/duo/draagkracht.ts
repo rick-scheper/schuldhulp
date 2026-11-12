@@ -1,3 +1,5 @@
+import { REKENREGELS } from '../rekenregels';
+
 /**
  * Draagkracht under SF35 (Wsf art. 6.10, 6.12): the termijn is capped at 4% of the yearly
  * toetsingsinkomen above the draagkrachtvrije voet, divided over 12 months. The income is that of
@@ -32,14 +34,15 @@ export interface DraagkrachtRules {
 
 /**
  * SF35, single without children: 4% above 100% WML. The 2027 voet is €28,405.73
- * (DUO normen.json `belastbaar_minimumloon`, docs/research/dutch-student-loans.md §3.2).
+ * (DUO normen.json `belastbaar_minimumloon`, docs/research/dutch-student-loans.md §3.2). The rule
+ * constants come from the rekenregels config (#29); the voet's growth is a model assumption.
  */
 export const SF35_DRAAGKRACHT: DraagkrachtRules = {
-  pct: 0.04,
-  voet: 28_405.73,
-  voetYear: 2027,
+  pct: REKENREGELS.duo.draagkracht.pct,
+  voet: REKENREGELS.duo.draagkracht.voet,
+  voetYear: REKENREGELS.duo.draagkracht.voetYear,
   voetGrowth: DEFAULT_INCOME_GROWTH,
-  peiljaarLag: 2,
+  peiljaarLag: REKENREGELS.duo.draagkracht.peiljaarLag,
 };
 
 /** Income in calendar year `year` on the path that starts in `baseYear`. */

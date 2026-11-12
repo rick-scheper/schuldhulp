@@ -1,3 +1,4 @@
+import { defaultRegimePathFor, REKENREGELS } from '../rekenregels';
 import { tegenbewijsBox3, type Box3Holdings, type TegenbewijsResult } from './forfait';
 import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, type Box3ForfaitParams, type Box3WerkelijkParams } from './params';
 import { werkelijkRendementBox3, type WerkelijkBreakdown } from './werkelijk';
@@ -19,7 +20,8 @@ export const DEFAULT_VASTRENTEND_PRODUCT: VastrentendProduct = 'deposito';
 export type Box3RegimePath = 'werkelijk-vanaf-2029' | 'forfait-blijft';
 
 export const BOX3_REGIME_PATHS: readonly Box3RegimePath[] = ['werkelijk-vanaf-2029', 'forfait-blijft'];
-export const DEFAULT_BOX3_REGIME_PATH: Box3RegimePath = 'werkelijk-vanaf-2029';
+/** Follows the box 3 status in the rekenregels config: `verworpen` flips it to 'forfait-blijft' (#12, #29). */
+export const DEFAULT_BOX3_REGIME_PATH: Box3RegimePath = defaultRegimePathFor(REKENREGELS.box3.status);
 /** "Kwijtschelding belast in box 3" is on by default (#15). */
 export const DEFAULT_KWIJTSCHELDING_BELAST = true;
 

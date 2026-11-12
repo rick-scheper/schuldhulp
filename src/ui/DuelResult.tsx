@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { MONTE_CARLO_N, type Box3Settings, type StrategyKind } from '../engine';
+import { BOX3_WERKELIJK, MONTE_CARLO_N, type Box3Settings, type StrategyKind } from '../engine';
 import { buildDuel, kwijtscheldingCallout, strategyName, strategyNameInline, type Duel } from './duel';
 import { dotCount, formatAmount, formatSignedAmount, inToekomsten, naturalFrequency } from './format';
 import type { MonteCarloState } from './useMonteCarlo';
+import { FIELD_IDS, goToField } from './fields';
+import { box3Chip } from './rekenregels';
 
 export type Unit = 'real' | 'nominal';
 
@@ -47,7 +49,7 @@ export function DuelResult({ state, unit, challenger, onChallengerChange, box3 }
 
   return (
     <>
-      <Verdict duel={duel} scale={scale} busy={running} error={error} />
+      <Verdict duel={duel} scale={scale} busy={running} error={error} box3={box3} />
       <section className="card duel" aria-label="Duel">
         <p className="duel-pick">
           <label>
@@ -96,8 +98,9 @@ export function DuelResult({ state, unit, challenger, onChallengerChange, box3 }
   );
 }
 
-function Verdict({ duel, scale, busy, error }: { duel: Duel; scale: number; busy: boolean; error: string | null }) {
+function Verdict({ duel, scale, busy, error, box3 }: { duel: Duel; scale: number; busy: boolean; error: string | null; box3: Box3Settings }) {
   const { headline, sub } = verdictText(duel, scale);
+  const chip = box3Chip(duel, box3);
   const showDebtFree = duel.kind !== 'aflossen';
   return (
     <section className="card verdict" aria-label="Oordeel" aria-busy={busy}>
@@ -107,6 +110,12 @@ function Verdict({ duel, scale, busy, error }: { duel: Duel; scale: number; busy
       </h2>
       <p className="verdict-sub" data-testid="verdict-sub">
         {sub}
+      </p>
+      <p className={chip.warning ? 'chip warn' : 'chip'} data-testid="box3-chip" role={chip.warning ? 'alert' : undefined}>
+        {chip.text} ·{' '}
+        <a href={`#${FIELD_IDS.forfaitBlijft}`} onClick={goToField(FIELD_IDS.forfaitBlijft)}>
+          wijzig
+        </a>
       </p>
       <p className="hint" data-testid="disclaimer">
         {DISCLAIMER}
@@ -211,29 +220,14 @@ function WinDots({ duel }: { duel: Duel }) {
   );
 }
 
-/** Opens the Geavanceerd section and focuses a switch in the input form. */
-function goToSwitch(id: string) {
-  return (e: React.MouseEvent) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    e.preventDefault();
-    const details = el.closest('details');
-    if (details) details.open = true;
-    el.scrollIntoView?.({ block: 'center' });
-    el.focus();
-  };
-}
-
-export const SWITCH_IDS = { forfaitBlijft: 'switch-forfait-blijft', kwijtscheldingBelast: 'switch-kwijtschelding-belast' } as const;
-
 function Callout({ callout, scale, box3 }: { callout: NonNullable<ReturnType<typeof kwijtscheldingCallout>>; scale: number; box3: Box3Settings }) {
   const forfait = box3.regimePath === 'forfait-blijft';
   const taxed = !forfait && box3.kwijtscheldingBelast !== false;
-  const switchId = forfait ? SWITCH_IDS.forfaitBlijft : SWITCH_IDS.kwijtscheldingBelast;
+  const switchId = forfait ? FIELD_IDS.forfaitBlijft : FIELD_IDS.kwijtscheldingBelast;
   const taxNote = forfait
     ? 'Box 3: onder het huidige forfait is kwijtschelding onbelast.'
     : taxed
-      ? 'Box 3: de app rekent de kwijtschelding als vermogenswinst, met ongeveer 36% belasting (nog niet bevestigd).'
+      ? `Box 3: de app rekent de kwijtschelding als vermogenswinst, met ongeveer ${Math.round(BOX3_WERKELIJK.rate * 100)}% belasting (nog niet bevestigd).`
       : 'Box 3: de app rekent de kwijtschelding als onbelast (nog niet bevestigd).';
   return (
     <div className="callout" data-testid="kwijtschelding-callout">
@@ -245,7 +239,7 @@ function Callout({ callout, scale, box3 }: { callout: NonNullable<ReturnType<typ
       <p className="hint">Kans op kwijtschelding: {inToekomsten(callout.kans)}.</p>
       <p className="hint" data-testid="kwijtschelding-tax">
         {taxNote}{' '}
-        <a href={`#${switchId}`} onClick={goToSwitch(switchId)}>
+        <a href={`#${switchId}`} onClick={goToField(switchId)}>
           wijzig
         </a>
       </p>

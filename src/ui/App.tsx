@@ -19,6 +19,9 @@ import { useMonteCarlo } from './useMonteCarlo';
 import { RangeStrips } from './RangeStrips';
 import { BreakEvenChart } from './BreakEvenChart';
 import { FanChart } from './FanChart';
+import { Assumptions } from './Assumptions';
+import { box3StatusKort, rekenregelsStamp } from './rekenregels';
+import { BOX3_WERKELIJK } from '../engine';
 import { buildDuel } from './duel';
 import { createBrowserMonteCarloClient, type MonteCarloClient } from '../worker/client';
 
@@ -110,6 +113,8 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
               )}
             />
           )}
+          <Assumptions inputs={inputs} />
+          {/* The mortgage note (#18) goes here, after "Waar rust deze berekening op?". */}
           <StrategyResult outcomes={outcomes} box3={inputs.box3} unit={unit} />
           <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>
@@ -129,8 +134,9 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
           verwacht verloop van de rente en vaste rendementen. Beide met{' '}
           {draft.forfaitBlijft
             ? 'het huidige box 3-forfait voor de hele looptijd.'
-            : 'box 3: het huidige forfait tot en met 2028, daarna werkelijk rendement volgens het wetsvoorstel (nog geen wet).'}
+            : `box 3: het huidige forfait tot en met ${BOX3_WERKELIJK.startYear - 1}, daarna werkelijk rendement (${box3StatusKort()}).`}
         </p>
+        <p data-testid="rekenregels-stamp">{rekenregelsStamp()}</p>
       </footer>
     </main>
   );

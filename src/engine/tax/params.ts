@@ -1,6 +1,8 @@
+import { REKENREGELS } from '../rekenregels';
+
 /**
- * Box 3 parameters: the single place the tax model reads them from (ready for the
- * rekenregels config, #29). Amounts in euros, rates as fractions.
+ * Box 3 parameters. The values live in the rekenregels config (../rekenregels.ts, #29); this
+ * module names them for the tax model. Amounts in euros, rates as fractions.
  *
  * Source: Belastingdienst, "Hoe is het box 3-inkomen op mijn voorlopige aanslag 2026 berekend?",
  * https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/berekening-box-3-inkomen-2026
@@ -28,17 +30,7 @@ export interface Box3ForfaitParams {
   retrieved: string;
 }
 
-export const BOX3_2026: Box3ForfaitParams = {
-  year: 2026,
-  rate: 0.36,
-  bankReturn: 0.0128,
-  overigeReturn: 0.06,
-  debtReturn: 0.027,
-  heffingsvrijVermogen: 59_357,
-  schuldendrempel: 3_800,
-  source: 'https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/berekening-box-3-inkomen-2026',
-  retrieved: '2026-11-12',
-};
+export const BOX3_2026: Box3ForfaitParams = REKENREGELS.box3.forfait;
 
 /** The parameters the model uses for every forfait year. */
 export const BOX3_FORFAIT_PARAMS: Box3ForfaitParams = BOX3_2026;
@@ -68,10 +60,4 @@ export interface Box3WerkelijkParams {
   retrieved: string;
 }
 
-export const BOX3_WERKELIJK: Box3WerkelijkParams = {
-  startYear: 2029,
-  rate: 0.36,
-  heffingsvrijResultaat: 1_800,
-  source: 'https://zoek.officielebekendmakingen.nl/kst-36748-2.html; https://www.tweedekamer.nl/downloads/document?id=2026D55225',
-  retrieved: '2026-11-12',
-};
+export const BOX3_WERKELIJK: Box3WerkelijkParams = REKENREGELS.box3.werkelijk;

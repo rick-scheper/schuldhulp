@@ -221,3 +221,11 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
   /* The fan's viewBox is scaled down to about 60% here; grow the labels to stay near 11px. */
   .fan-svg .be-tick { font-size: 17px; }
 }
+
+/* Box 3 chip under the verdict (#12, #29): muted, a warning when "forfait blijft" flips the verdict. */
+.chip { display: inline-block; margin: 8px 0 0; padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; color: var(--text-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+.chip.warn { display: block; border-radius: 8px; padding: 8px 12px; background: var(--warn-bg); border-color: var(--warn-line); color: var(--text); font-size: 0.9rem; font-weight: 600; }
+
+/* "Waar rust deze berekening op?" */
+.assumptions ol { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; }
+.assumptions li { overflow-wrap: anywhere; }

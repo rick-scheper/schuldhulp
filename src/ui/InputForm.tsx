@@ -1,5 +1,7 @@
-import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, EQUITY_INDICES, type EquityIndex, type FreedUpDestination, type VastrentendProduct } from '../engine';
+import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, DIVIDENDLEK, EQUITY_INDICES, SF35_DRAAGKRACHT, YIELD_SNAPSHOT, type EquityIndex, type FreedUpDestination, type VastrentendProduct } from '../engine';
 import { formatEuro } from './format';
+import { FIELD_IDS } from './fields';
+import { box3StatusKort } from './rekenregels';
 import { defaultTerPct, pct, type InputDraft, type RateInfo } from './inputs';
 
 interface Props {
@@ -64,9 +66,9 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             <input inputMode="decimal" placeholder="leeg = geen draagkracht" value={draft.income} onChange={set('income')} />
           </span>
           <span className="hint">
-            Optioneel, ongeveer je toetsingsinkomen. DUO begrenst je termijn dan op je draagkracht: 4% van je inkomen
-            boven de draagkrachtvrije voet (€ 28.405,73 in 2027), met je inkomen van twee jaar eerder. Leeg: je betaalt
-            het wettelijk maandbedrag.
+            Optioneel, ongeveer je toetsingsinkomen. DUO begrenst je termijn dan op je draagkracht:{' '}
+            {pct(SF35_DRAAGKRACHT.pct, 0)}% van je inkomen boven de draagkrachtvrije voet ({formatEuro(SF35_DRAAGKRACHT.voet)} in{' '}
+            {SF35_DRAAGKRACHT.voetYear}), met je inkomen van twee jaar eerder. Leeg: je betaalt het wettelijk maandbedrag.
           </span>
         </label>
 
@@ -167,11 +169,11 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field">
             <span className="field-label">Verwacht rendement aandelen</span>
             <span className="input-wrap">
-              <input inputMode="decimal" value={draft.equityReturnPct} onChange={set('equityReturnPct')} />
+              <input id={FIELD_IDS.equityReturn} inputMode="decimal" value={draft.equityReturnPct} onChange={set('equityReturnPct')} />
               <span className="affix">%</span>
             </span>
             <span className="hint">
-              Per jaar, meetkundig, vóór kosten (Commissie Parameters 2022: 5,4%). Er gaat nog 0,15% dividendlek af:
+              Per jaar, meetkundig, vóór kosten (Commissie Parameters 2022: 5,4%). Er gaat nog {pct(DIVIDENDLEK, 2)}% dividendlek af:
               bronbelasting op dividend die een indexfonds niet terugkrijgt.
             </span>
           </label>
@@ -188,7 +190,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field">
             <span className="field-label">Inflatie</span>
             <span className="input-wrap">
-              <input inputMode="decimal" value={draft.inflationPct} onChange={set('inflationPct')} />
+              <input id={FIELD_IDS.inflation} inputMode="decimal" value={draft.inflationPct} onChange={set('inflationPct')} />
               <span className="affix">%</span>
             </span>
             <span className="hint">Per jaar. Gebruikt voor euro's van nu en voor het meegroeien van je surplus.</span>
@@ -209,7 +211,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field">
             <span className="field-label">Verwachte langetermijnrente</span>
             <span className="input-wrap">
-              <input inputMode="decimal" value={draft.thetaPct} onChange={set('thetaPct')} disabled={draft.constantRate} />
+              <input id={FIELD_IDS.theta} inputMode="decimal" value={draft.thetaPct} onChange={set('thetaPct')} disabled={draft.constantRate} />
               <span className="affix">%</span>
             </span>
             <span className="hint">
@@ -222,6 +224,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field checkbox">
             <span>
               <input
+                id={FIELD_IDS.constantRate}
                 type="checkbox"
                 checked={draft.constantRate}
                 onChange={(e) => onChange({ ...draft, constantRate: e.target.checked })}
@@ -230,7 +233,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             </span>
             <span className="hint">
               Elke nieuwe rentevaste periode houdt je huidige rente, in elke toekomst. Uit: elke periode krijgt de rente
-              die volgt uit de 5-jaarsrente op staatsobligaties (nu ongeveer 3,2%) in die toekomst.
+              die volgt uit de 5-jaarsrente op staatsobligaties (nu ongeveer {pct(YIELD_SNAPSHOT.value)}%) in die toekomst.
             </span>
           </label>
 
@@ -280,7 +283,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field checkbox">
             <span>
               <input
-                id="switch-forfait-blijft"
+                id={FIELD_IDS.forfaitBlijft}
                 type="checkbox"
                 checked={draft.forfaitBlijft}
                 onChange={(e) => onChange({ ...draft, forfaitBlijft: e.target.checked })}
@@ -289,14 +292,14 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             </span>
             <span className="hint">
               Box 3 blijft je hele looptijd het forfait met tegenbewijs. Uit: vanaf {BOX3_WERKELIJK.startYear} belasting
-              op werkelijk rendement, zoals het wetsvoorstel (nog geen wet) plant.
+              op werkelijk rendement ({box3StatusKort()}).
             </span>
           </label>
 
           <label className="field checkbox">
             <span>
               <input
-                id="switch-kwijtschelding-belast"
+                id={FIELD_IDS.kwijtscheldingBelast}
                 type="checkbox"
                 checked={draft.kwijtscheldingBelast}
                 disabled={draft.forfaitBlijft}
@@ -306,7 +309,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             </span>
             <span className="hint">
               Bij werkelijk rendement telt de kwijtgescholden schuld waarschijnlijk als vermogenswinst in het jaar dat
-              die vervalt: ongeveer 36% belasting over dat bedrag. Nog geen wet en niet bevestigd door de Belastingdienst
+              die vervalt: ongeveer {pct(BOX3_WERKELIJK.rate, 0)}% belasting over dat bedrag. Nog geen wet en niet bevestigd door de Belastingdienst
               of DUO. Onder het forfait is kwijtschelding onbelast.
             </span>
           </label>

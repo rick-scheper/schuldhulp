@@ -1,9 +1,10 @@
+import { REKENREGELS } from '../rekenregels';
 import { addMonths, monthsBetween, type YearMonth } from '../time';
 import { annuityPayment, monthlyRate } from './annuity';
 import { draagkrachtPerMonth, SF35_DRAAGKRACHT, type DraagkrachtRules, type IncomePath } from './draagkracht';
 
 /** SF35 terugbetaalfase: 35 years (Wsf art. 6.7). Aflosvrije months are out of scope for v1. */
-export const SF35_TERM_MONTHS = 35 * 12;
+export const SF35_TERM_MONTHS = REKENREGELS.duo.termMonths;
 
 /** Balances below this are float noise, not debt. */
 const EPSILON = 1e-6;

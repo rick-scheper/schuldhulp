@@ -7,3 +7,4 @@ export * from './strategy';
 export * from './rate';
 export * from './tax';
 export * from './montecarlo';
+export * from './rekenregels';

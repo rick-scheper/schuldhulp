@@ -1,4 +1,4 @@
-import type { DuoSchedule, RateOrigin, RatePeriod, RecalculationKind } from '../engine';
+import { LAST_PUBLISHED_YEAR, type DuoSchedule, type RateOrigin, type RatePeriod, type RecalculationKind } from '../engine';
 import { formatEuro, formatMonthLong } from './format';
 import { pct } from './inputs';
 
@@ -56,7 +56,7 @@ export function ScheduleResult({ schedule, periods, constantRate }: Props) {
         Zolang je studeert verandert je DUO-rente elk jaar. Vanaf je aanloopfase staat hij steeds 5 jaar vast; elke
         nieuwe periode krijgt de rente van haar eerste jaar: het gemiddelde van de 5-jaarsrente op staatsobligaties van
         oktober twee jaar eerder tot en met september het jaar ervoor, afgerond op 2 decimalen en nooit onder 0%.
-        {constantRate ? ' Je rekent met "rente blijft gelijk".' : ' Na 2027 is dat een verwachting zonder spreiding.'}
+        {constantRate ? ' Je rekent met "rente blijft gelijk".' : ` Na ${LAST_PUBLISHED_YEAR} is dat een verwachting zonder spreiding.`}
       </p>
       <div className="table-wrap">
         <table data-testid="rate-periods">

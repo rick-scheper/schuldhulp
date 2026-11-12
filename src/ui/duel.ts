@@ -40,6 +40,11 @@ export interface Duel {
   kind: VerdictKind;
   /** Paired: the share of toekomsten in which the challenger ends strictly above the baseline. */
   winkans: number;
+  /**
+   * The verdict category of the same duel in the paired "forfait blijft" run (same toekomsten,
+   * #12): drives the box 3 chip's warning. Null without a paired run.
+   */
+  forfaitBlijftKind: VerdictKind | null;
 }
 
 /**
@@ -61,7 +66,14 @@ export function buildDuel(summary: MonteCarloSummary, chosen: StrategyKind | nul
     baselineMedianReal,
     kind: verdictKind(medianDifferenceReal, baselineMedianReal),
     winkans: challenger.winkans,
+    forfaitBlijftKind: pairedKind(baseline, challenger, d),
   };
+}
+
+function pairedKind(baseline: StrategySummary, challenger: StrategySummary, deflator: number): VerdictKind | null {
+  if (!baseline.forfaitBlijft || !challenger.forfaitBlijft) return null;
+  const base = baseline.forfaitBlijft.eindvermogen.p50 * deflator;
+  return verdictKind(challenger.forfaitBlijft.eindvermogen.p50 * deflator - base, base);
 }
 
 export interface KwijtscheldingCallout {

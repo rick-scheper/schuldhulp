@@ -371,7 +371,7 @@ describe('App', () => {
     it('echoes the inputs in a header with an "aanpassen" link back to the form', async () => {
       await fill();
       expect(text('input-summary')).toMatch(/^Studieschuld € 30\.000 · terugbetalen vanaf januari 2027 · € 200 per maand over/);
-      const link = screen.getByRole('link', { name: 'aanpassen' });
+      const link = within(screen.getByTestId('input-summary')).getByRole('link', { name: 'aanpassen' });
       expect(link.getAttribute('href')).toBe('#invoer');
       expect(document.getElementById('invoer')?.tagName).toBe('FORM');
     });
@@ -516,6 +516,50 @@ describe('App', () => {
         await fill('60.000', '300', '30.000');
         expect(text('breakeven-sentence')).toMatch(/^Aandelen winnen zelfs als de index gemiddeld 0% per jaar oplevert: .*kwijtgescholden/);
         expect(screen.queryByTestId('breakeven-marker')).toBeNull();
+      });
+    });
+
+    describe('rekenregels, caveats + box 3 chip (#29)', () => {
+      it('shows the box 3 chip under the verdict, muted, linking to the forfait switch', async () => {
+        await fill();
+        const chip = screen.getByTestId('box3-chip');
+        expect(chip.closest('section')?.getAttribute('aria-label')).toBe('Oordeel');
+        expect(chip.className).toBe('chip');
+        expect(chip.textContent).toMatch(/^Box 3: gerekend met het nieuwe stelsel vanaf 2029 \(wetsvoorstel, nog geen wet\)/);
+        const link = within(chip).getByRole('link', { name: 'wijzig' });
+        expect(link.getAttribute('href')).toBe('#switch-forfait-blijft');
+        fireEvent.click(screen.getByLabelText(/Huidig forfait blijft gelden/));
+        await waitFor(() => expect(text('box3-chip')).toMatch(/huidige forfait voor de hele looptijd/));
+      });
+
+      it('stamps the footer with the rekenregels date, the DUO year and the box 3 status', async () => {
+        await fill();
+        expect(text('rekenregels-stamp')).toBe(
+          'Rekenregels bijgewerkt tot 12 november 2026: DUO-rente 2027, box 3 volgens het wetsvoorstel (nog geen wet).',
+        );
+      });
+
+      it('folds "Waar rust deze berekening op?" after the fan chart, every link pointing at an existing field', async () => {
+        await fill();
+        const fold = screen.getByTestId('assumptions') as HTMLDetailsElement;
+        expect(fold.open).toBe(false);
+        expect(fold.querySelector('summary')!.textContent).toBe('Waar rust deze berekening op?');
+        const fan = screen.getByText(/Hoe ontwikkelt je vermogen zich/).closest('details')!;
+        expect(fan.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(fold.querySelectorAll('li')).toHaveLength(10);
+        const links = within(fold).getAllByRole('link', { name: 'aanpassen' });
+        expect(links.length).toBe(5);
+        for (const a of links) {
+          const target = document.getElementById(a.getAttribute('href')!.slice(1));
+          expect(target?.closest('details')?.querySelector('summary')?.textContent).toBe('Geavanceerd');
+        }
+      });
+
+      it('caveat 2 follows the kwijtschelding switch', async () => {
+        await fill();
+        expect(text('assumption-kwijtschelding')).toMatch(/Belast als vermogenswinst/);
+        fireEvent.click(screen.getByLabelText(/Kwijtschelding belast in box 3/));
+        expect(text('assumption-kwijtschelding')).toMatch(/Onbelast\./);
       });
     });
 
