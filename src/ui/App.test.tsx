@@ -744,6 +744,7 @@ describe('cockpit', () => {
       'Vermogen',
       'Vrijgekomen geld',
       'Huis',
+      'Leenruimte',
       'Kansen',
       'Details',
     ]);
@@ -763,6 +764,28 @@ describe('cockpit', () => {
     render(<App today={ym(2027, 1)} monteCarlo={null} initialDraft={{ ...EMPTY_DRAFT, debt: '30000', repaymentStart: '2027-01', surplus: '200' }} />);
     fireEvent.click(within(screen.getByTestId('input-summary')).getByRole('link', { name: 'aanpassen' }));
     expect(drawer().hidden).toBe(false);
+  });
+
+  it('the Leenruimte lens asks for an income, then shows mortgage, koopsom and strategies', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill();
+    showLens('Leenruimte');
+    expect(screen.getByTestId('leenruimte-empty')).toBeTruthy();
+    fill('30.000', '50.000');
+    expect(screen.getByRole('img', { name: /Maximale hypotheek per jaar/ })).toBeTruthy();
+    const amount = (id: string) => Number(text(id).replace(/[^\d-]/g, ''));
+    fireEvent.change(screen.getByLabelText('Jaar waarin je koopt'), { target: { value: '0' } });
+    // €50k at a 4.0% toetsrente: ≈ €197k + €17k single + €10k label A/B, minus about €27k for a €30k DUO debt.
+    expect(amount('leenruimte-max')).toBeGreaterThan(185_000);
+    expect(amount('leenruimte-max')).toBeLessThan(205_000);
+    expect(text('leenruimte-duo')).toMatch(/^[−-]/);
+    expect(amount('leenruimte-duo')).toBeGreaterThan(20_000);
+    const koopsom = amount('leenruimte-koopsom');
+    fireEvent.change(screen.getByLabelText('Spaargeld'), { target: { value: '40.000' } });
+    expect(amount('leenruimte-koopsom')).toBeGreaterThan(koopsom + 25_000);
+    expect(screen.getByTestId('effect-geen-schuld').textContent).toMatch(/\+/);
+    fireEvent.change(screen.getByLabelText('Spaargeld'), { target: { value: '0' } });
+    expect(screen.getByTestId('leenruimte-tekort')).toBeTruthy();
   });
 
   it('shows one lens at a time', () => {

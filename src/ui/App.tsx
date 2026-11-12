@@ -32,6 +32,7 @@ import { createBrowserMonteCarloClient, type MonteCarloClient } from '../worker/
 import { buildCockpit, debtHeadline, LENSES, type Lens } from './cockpit';
 import { LensLayout, SchuldLens, VermogenLens, VrijLens } from './CockpitLenses';
 import { WhatIf } from './WhatIf';
+import { LeenruimteLens } from './LeenruimteLens';
 import { OPEN_INVOER } from './fields';
 import { formatAmount, formatEuro, formatInputEuro } from './format';
 
@@ -236,6 +237,16 @@ export function App({ today = currentMonth(), initialDraft, monteCarlo }: Props)
                   {client ? `Bezig met rekenen over ${nf.format(MONTE_CARLO_N)} mogelijke toekomsten…` : 'Het koopbudget heeft de berekening van de toekomsten nodig.'}
                 </p>
               )}
+            </Panel>
+            <Panel lens="leenruimte" active={lens}>
+              <LeenruimteLens
+                cockpit={cockpit}
+                unit={unit}
+                ctx={plan?.income ? { income: plan.income, baseYear: today.year, inflation: plan.inflation } : null}
+                inleg={inputs.inleg}
+                jaren={hypotheekJaren}
+                surplus={inputs.surplus}
+              />
             </Panel>
             <Panel lens="kansen" active={lens}>
               {client && (

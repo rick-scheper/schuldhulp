@@ -300,6 +300,19 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .lc-legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 0.85rem; }
 .lc-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
 .lc-note { margin: 0; }
+.leenruimte-controls { display: flex; flex-direction: column; gap: 14px; padding: 14px 20px; }
+.leenruimte-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.leenruimte-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--text-muted); }
+.leenruimte-fields input, .leenruimte-fields select { width: 100%; }
+.leenruimte-checks { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.9rem; }
+.effects { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.effects li { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 7.5em; gap: 12px; align-items: center; font-size: 0.9rem; }
+.effect-track { position: relative; height: 14px; border-left: 0; }
+.effect-track::before { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--border); }
+.effect-track i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.effect-track i.up { background: var(--win); }
+.effect-track i.down { background: var(--lose); }
+.effect-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 1000px) {
   .lens-grid { grid-template-columns: 1fr; }
   .cockpit.drawer-open { grid-template-columns: 76px 1fr; }
@@ -315,4 +328,7 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
   .cockpit-main { padding: 16px 16px 48px; }
   .kpis { grid-template-columns: 1fr 1fr; }
   .what-if { grid-template-columns: 1fr; gap: 16px; }
+  .leenruimte-fields { grid-template-columns: 1fr 1fr; }
+  .effects li { grid-template-columns: minmax(0, 1fr) 6.5em; }
+  .effect-track { display: none; }
 }

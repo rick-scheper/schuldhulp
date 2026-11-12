@@ -36,6 +36,16 @@ export interface CockpitPoint {
   potAflossen: number;
   /** Pot of 100% aandelen. */
   potAandelen: number;
+  /** Grid month index of the point (0 = the first simulated month). */
+  monthIndex: number;
+  /** Months of the DUO term left after the point's month. */
+  remainingMonths: number;
+  /** The DUO rate in force in the point's month. */
+  duoRate: number;
+  /** Debt paying only the termijn, nominal (whatever the display unit). */
+  debtNominal: number;
+  /** Debt with 100% extra aflossen, nominal. */
+  debtAflossenNominal: number;
 }
 
 export interface Cockpit {
@@ -69,6 +79,8 @@ export function buildCockpit(
   const eq = run(aandelen).trace!;
   const sm = schedule.months;
   const n = Math.min(sm.length, af.length, eq.length);
+  const pad = plan.rentepad && plan.rentepad.length > 0 ? plan.rentepad : null;
+  const rateAt = (i: number) => (pad ? (pad[Math.min(i, pad.length - 1)] ?? plan.annualRate) : plan.annualRate);
   const money = (x: number, i: number) => (unit === 'real' ? toEurosVanNu(x, i + 1, plan.inflation) : x);
 
   const points: CockpitPoint[] = [];
@@ -99,6 +111,11 @@ export function buildCockpit(
         freedCum,
         potAflossen: money(a.equityPot + a.vastrentendPot, i),
         potAandelen: money(e.equityPot + e.vastrentendPot, i),
+        monthIndex: i,
+        remainingMonths: n - 1 - i,
+        duoRate: rateAt(i),
+        debtNominal: s.balanceAfter,
+        debtAflossenNominal: Math.max(0, a.balanceAfter),
       });
     }
   }
@@ -131,6 +148,7 @@ export const LENSES = [
   { key: 'vermogen', label: 'Vermogen', icon: '📈' },
   { key: 'vrij', label: 'Vrijgekomen geld', icon: '💶' },
   { key: 'huis', label: 'Huis', icon: '🏠' },
+  { key: 'leenruimte', label: 'Leenruimte', icon: '🔑' },
   { key: 'kansen', label: 'Kansen', icon: '🎲' },
   { key: 'details', label: 'Details', icon: '📋' },
 ] as const;
