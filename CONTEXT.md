@@ -14,6 +14,7 @@
 - **Extra aflossen** — voluntary repayment above the monthly amount (the "pay off" strategy).
 - **Surplus** — the monthly amount the user can spare on top of the required monthly payment; the money a strategy allocates.
 - **Inleg** — an optional one-off amount (existing savings) allocated at the start, alongside the surplus.
+- **Vrijgekomen geld** — the part of the termijn a strategy no longer pays compared with the 0%-aflossen debt path, because extra aflossen lowered the termijn or cleared the debt. It is allocated like the surplus (so every strategy spends the same cash each month); once the debt is cleared it goes into the strategy's investment split, for 100% extra aflossen into equities unless overridden.
 - **Toetsingsinkomen** — the income DUO bases draagkracht on (roughly the verzamelinkomen).
 - **Vastrentend** — a stable investment that earns one fixed annual rate (e.g. a deposito or staatsobligatie held to maturity).
 - **Dividendlek** — dividend withholding tax lost inside an index fund, which the investor cannot reclaim; a hidden yearly drag on the equity return on top of the fund's TER.

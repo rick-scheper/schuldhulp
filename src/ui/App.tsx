@@ -1,7 +1,15 @@
 import { useState } from 'react';
-import { buildConstantRateSchedule, ym, type YearMonth } from '../engine';
+import {
+  buildConstantRateSchedule,
+  compareStrategies,
+  constantMarket,
+  standardStrategies,
+  ym,
+  type YearMonth,
+} from '../engine';
 import { InputForm } from './InputForm';
 import { ScheduleResult } from './ScheduleResult';
+import { StrategyResult } from './StrategyResult';
 import { EMPTY_DRAFT, parseInputs, type InputDraft } from './inputs';
 
 function currentMonth(): YearMonth {
@@ -21,6 +29,17 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
 
   // Cheap enough (≤ 420 months) to recompute on every render.
   const schedule = inputs && buildConstantRateSchedule({ ...inputs, today });
+  const outcomes =
+    inputs &&
+    compareStrategies(
+      { ...inputs, today },
+      standardStrategies({
+        mixAflossenShare: inputs.mixAflossenShare,
+        mixEquityShare: inputs.mixEquityShare,
+        freedUpDestination: inputs.freedUpDestination,
+      }),
+      constantMarket(inputs.returns),
+    );
 
   return (
     <main className="page">
@@ -29,12 +48,15 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
         <p className="lede">Extra aflossen op je studieschuld of beleggen? Begin met wat DUO nu van je vraagt.</p>
       </header>
       <InputForm draft={draft} onChange={setDraft} />
-      {schedule ? (
-        <ScheduleResult schedule={schedule} />
+      {schedule && outcomes ? (
+        <>
+          <StrategyResult outcomes={outcomes} />
+          <ScheduleResult schedule={schedule} />
+        </>
       ) : (
         <p className="card empty">Vul je studieschuld, de start van je terugbetaalfase en je surplus in.</p>
       )}
-      <footer className="hint">Geen financieel advies. Rekent met een vaste DUO-rente en zonder draagkracht.</footer>
+      <footer className="hint">Geen financieel advies. Rekent met een vaste DUO-rente, vaste rendementen, zonder draagkracht en zonder belasting.</footer>
     </main>
   );
 }
