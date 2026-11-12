@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from './App';
+import { EMPTY_DRAFT } from './inputs';
 import { ym, type MonteCarloInput } from '../engine';
 import { createMonteCarloClient, type MonteCarloClient, type WorkerLike } from '../worker/client';
 import { handleRequest, type WorkerRequest, type WorkerResponse } from '../worker/protocol';
 
 afterEach(cleanup);
+// The cockpit shows one lens at a time; the others are hidden tab panels.
+const showLens = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
 // The app auto-saves (#31): every test starts without saved inputs or a share link.
 beforeEach(() => {
   localStorage.clear();
@@ -34,6 +37,7 @@ describe('App', () => {
     expect(text('termijn')).toBe('€ 109,96');
     expect(text('total-paid')).toBe('€ 46.181,14');
     expect(text('kwijtgescholden')).toBe('€ 0,00');
+    showLens('Details');
     expect(within(screen.getByTestId('recalculations')).getAllByRole('row')).toHaveLength(1 + 8);
   });
 
@@ -60,6 +64,7 @@ describe('App', () => {
       expect(text('termijn')).toBe('€ 71,98');
       expect(text('termijn-hint')).toMatch(/draagkracht/);
       expect(screen.getByTestId('kwijtgescholden').textContent).not.toMatch(/0,00/);
+      showLens('Vermogen');
       expect(screen.getByRole('region', { name: 'Strategieën' }).textContent).toMatch(/telt niet mee in je eindvermogen/);
     });
 
@@ -129,7 +134,7 @@ describe('App', () => {
     it('offers the Geavanceerd fields', () => {
       fill();
       for (const label of [/Verwacht rendement aandelen/, /Fondskosten \(TER\)/, /Inflatie/, /Surplus groeit mee/, /Vrijgekomen geld/]) {
-        expect(screen.getByLabelText(label)).toBeTruthy();
+        expect(screen.getByLabelText(label, { selector: 'input, select' })).toBeTruthy();
       }
     });
 
@@ -144,7 +149,7 @@ describe('App', () => {
     it('moves the aflossen pot to vastrentend when the destination is overridden', () => {
       fill();
       const before = euros('eindvermogen-aflossen');
-      fireEvent.change(screen.getByLabelText(/Vrijgekomen geld/), { target: { value: 'vastrentend' } });
+      fireEvent.change(screen.getByLabelText(/Vrijgekomen geld/, { selector: 'select' }), { target: { value: 'vastrentend' } });
       expect(euros('eindvermogen-aflossen')).toBeLessThan(before);
     });
   });
@@ -160,6 +165,7 @@ describe('App', () => {
 
     it('shows the eindvermogen after box 3 and the box 3 tax per strategy', () => {
       fill();
+      showLens('Vermogen');
       expect(screen.getByRole('region', { name: 'Strategieën' }).textContent).toMatch(/na box 3-belasting/);
       expect(euros('box3-aandelen')).toBeGreaterThan(0);
     });
@@ -239,7 +245,7 @@ describe('App', () => {
     const rateInput = () => screen.getByLabelText(/Huidige DUO-rente/) as HTMLInputElement;
     const periodRows = () =>
       within(screen.getByTestId('rate-periods'))
-        .getAllByRole('row')
+        .getAllByRole('row', { hidden: true })
         .slice(1)
         .map((r) => Array.from(r.querySelectorAll('td')).map((td) => td.textContent));
 
@@ -475,6 +481,7 @@ describe('App', () => {
       expect(callout).toMatch(/Je schuld wordt waarschijnlijk deels kwijtgescholden \(doorsnee € [\d.]+\)/);
       expect(callout).toMatch(/Kans op kwijtschelding: (in \d+ van de 100 toekomsten|vrijwel altijd)/);
       expect(text('kwijtschelding-tax')).toMatch(/vermogenswinst, met ongeveer 36% belasting/);
+      showLens('Kansen');
       const link = within(screen.getByTestId('kwijtschelding-tax')).getByRole('link', { name: 'wijzig' });
       const toggle = screen.getByLabelText(/Kwijtschelding belast in box 3/) as HTMLInputElement;
       expect(link.getAttribute('href')).toBe(`#${toggle.id}`);
@@ -546,6 +553,7 @@ describe('App', () => {
     describe('rekenregels, caveats + box 3 chip (#29)', () => {
       it('shows the box 3 chip under the verdict, muted, linking to the forfait switch', async () => {
         await fill();
+        showLens('Kansen');
         const chip = screen.getByTestId('box3-chip');
         expect(chip.closest('section')?.getAttribute('aria-label')).toBe('Oordeel');
         expect(chip.className).toBe('chip');
@@ -571,6 +579,7 @@ describe('App', () => {
         const fan = screen.getByText(/Hoe ontwikkelt je vermogen zich/).closest('details')!;
         expect(fan.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(fold.querySelectorAll('li')).toHaveLength(10);
+        showLens('Details');
         const links = within(fold).getAllByRole('link', { name: 'aanpassen' });
         expect(links.length).toBe(5);
         for (const a of links) {
@@ -668,11 +677,10 @@ describe('mortgage koopbudget note (#30)', () => {
   const text = (id: string) => screen.getByTestId(id).textContent!.replace(/\s/g, ' ');
   const slider = () => screen.getByLabelText('Hypotheek over aantal jaar') as HTMLInputElement;
 
-  it('sits after "Waar rust deze berekening op?", labelled as not scored, with the slider at 5 years', async () => {
+  it('sits in the Huis lens, labelled as not scored, with the slider at 5 years', async () => {
     await fill();
     const note = screen.getByTestId('mortgage-note');
-    const assumptions = screen.getByTestId('assumptions');
-    expect(assumptions.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(note.closest('[role="tabpanel"]')?.id).toBe('lens-huis');
     expect(note.textContent).toMatch(/telt niet mee in de vergelijking/);
     expect(slider().value).toBe('5');
     expect(slider().min).toBe('0');
@@ -681,7 +689,7 @@ describe('mortgage koopbudget note (#30)', () => {
     expect(text('koopbudget-baseline-median')).toMatch(/^[+−]?€ [\d.]+$/);
     expect(text('koopbudget-challenger-dekt')).toMatch(/is je pot groot genoeg om de schuld af te lossen\.$/);
     expect(text('koopbudget-k')).toMatch(/^(Aflossen bij DUO levert hier € \d,\d\d hypotheekruimte per euro op|Je schuld is dan)/);
-    expect(text('koopbudget-eindvermogen')).toBe('Dit verandert je eindvermogen; de uitslag hierboven gaat ervan uit dat je blijft beleggen.');
+    expect(text('koopbudget-eindvermogen')).toBe('Dit verandert je eindvermogen; de uitslag onder Kansen gaat ervan uit dat je blijft beleggen.');
     expect(text('koopbudget-caveat')).toMatch(/inkomen je hypotheek begrenst.*Trhk.*kosten koper, NHG/);
     // From 2029: the realisation tax line (end 2032 here).
     expect(screen.getByTestId('koopbudget-challenger-box3')).toBeTruthy();
@@ -713,5 +721,112 @@ describe('mortgage koopbudget note (#30)', () => {
     fireEvent.click(screen.getByLabelText(/Nominaal/));
     const nominal = Number(text('koopbudget-challenger-pot').replace(/[^\d]/g, ''));
     expect(nominal).toBeGreaterThan(real);
+  });
+});
+
+describe('cockpit', () => {
+  const fill = (debt = '30.000', income?: string) => {
+    fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: debt } });
+    fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+    fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: '200' } });
+    if (income) fireEvent.change(screen.getByLabelText(/Bruto jaarinkomen/), { target: { value: income } });
+  };
+  const text = (id: string) => screen.getByTestId(id).textContent!.replace(/\s/g, ' ');
+  const drawer = () => document.getElementById('invoer-drawer')!;
+
+  it('opens with the input drawer and no lenses until the inputs give a result', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    expect(drawer().hidden).toBe(false);
+    expect(screen.queryByRole('tab')).toBeNull();
+    fill();
+    expect(screen.getAllByRole('tab').map((t) => t.textContent!.replace(/^\W+/u, ''))).toEqual([
+      'Schuld',
+      'Vermogen',
+      'Vrijgekomen geld',
+      'Huis',
+      'Kansen',
+      'Details',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Schuld' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('starts with the drawer closed when the saved inputs already give a result, and toggles it from the rail', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} initialDraft={{ ...EMPTY_DRAFT, debt: '30000', repaymentStart: '2027-01', surplus: '200' }} />);
+    expect(drawer().hidden).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Invoer' }));
+    expect(drawer().hidden).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Invoer sluiten' }));
+    expect(drawer().hidden).toBe(true);
+  });
+
+  it('the "aanpassen" link opens the drawer', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} initialDraft={{ ...EMPTY_DRAFT, debt: '30000', repaymentStart: '2027-01', surplus: '200' }} />);
+    fireEvent.click(within(screen.getByTestId('input-summary')).getByRole('link', { name: 'aanpassen' }));
+    expect(drawer().hidden).toBe(false);
+  });
+
+  it('shows one lens at a time', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill();
+    const panel = (key: string) => document.getElementById(`lens-${key}`)!;
+    expect(panel('schuld').hidden).toBe(false);
+    expect(panel('vermogen').hidden).toBe(true);
+    showLens('Vermogen');
+    expect(panel('schuld').hidden).toBe(true);
+    expect(panel('vermogen').hidden).toBe(false);
+    expect(screen.getByRole('img', { name: /Je pot per jaar/ })).toBeTruthy();
+  });
+
+  it('says the debt is paid off, with the KPIs, when nothing is forgiven', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill();
+    expect(text('debt-headline')).toMatch(/los je je schuld vóór het einde van 2061 helemaal af/);
+    expect(text('kpi-schuld')).toBe('€ 30.000');
+    expect(text('kpi-kwijtgescholden')).toBe('€ 0');
+    expect(Number(text('kpi-schuldvrij'))).toBeLessThan(2061);
+  });
+
+  it('leads with the kwijtschelding when draagkracht keeps the debt from being paid off', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill('60.000', '30.000');
+    expect(text('debt-headline')).toMatch(
+      /^In dit rekenvoorbeeld los je je schuld niet helemaal af: na 2061 scheldt DUO ongeveer € [\d.]+ kwijt\. Wat je extra aflost, gaat deels af van geld dat je anders nooit had hoeven betalen\./,
+    );
+    expect(screen.getByTestId('kpi-kwijtgescholden').closest('.kpi')!.className).toMatch(/forgiven/);
+  });
+
+  it('the what-if surplus slider writes into the form', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill();
+    fireEvent.change(screen.getByLabelText('Surplus per maand'), { target: { value: '500' } });
+    expect((screen.getByLabelText(/Maandelijks surplus/) as HTMLInputElement).value).toBe('500');
+    expect(text('input-summary')).toMatch(/€ 500 per maand over/);
+  });
+
+  it('offers the Monte Carlo verdict from the headline, opening the Kansen lens', async () => {
+    const worker = (): WorkerLike => {
+      const w: WorkerLike = {
+        onmessage: null,
+        postMessage(message: WorkerRequest) {
+          const { response } = handleRequest(message);
+          setTimeout(() => w.onmessage?.({ data: response } as MessageEvent<WorkerResponse>), 0);
+        },
+        terminate() {},
+      };
+      return w;
+    };
+    const client = createMonteCarloClient(worker, 2);
+    render(<App today={ym(2027, 1)} monteCarlo={{ run: (input) => client.run({ ...input, n: 40 }), dispose: client.dispose }} />);
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Bekijk het oordeel over 5.000 toekomsten →' }));
+    expect(document.getElementById('lens-kansen')!.hidden).toBe(false);
+    await waitFor(() => expect(screen.getByTestId('verdict')).toBeTruthy());
+    expect(screen.getByTestId('verdict').closest('[role="tabpanel"]')?.id).toBe('lens-kansen');
+  });
+
+  it('without workers there is no link to the verdict', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill();
+    expect(screen.queryByRole('button', { name: /Bekijk het oordeel/ })).toBeNull();
   });
 });

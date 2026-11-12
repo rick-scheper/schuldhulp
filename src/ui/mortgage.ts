@@ -92,7 +92,7 @@ export function potDektSchuldLine(share: number): string {
   return `${s.charAt(0).toUpperCase()}${s.slice(1)} is je pot groot genoeg om de schuld af te lossen.`;
 }
 
-export const EINDVERMOGEN_NOTE = 'Dit verandert je eindvermogen; de uitslag hierboven gaat ervan uit dat je blijft beleggen.';
+export const EINDVERMOGEN_NOTE = 'Dit verandert je eindvermogen; de uitslag onder Kansen gaat ervan uit dat je blijft beleggen.';
 
 /** The caveats the note carries itself (#11, #13); the full list is in "Waar rust deze berekening op?". */
 export function mortgageCaveat(r = REKENREGELS): string {

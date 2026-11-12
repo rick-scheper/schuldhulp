@@ -1,4 +1,5 @@
 import type { Unit } from './DuelResult';
+import { goToField } from './fields';
 import { formatInputEuro, formatMonthLong } from './format';
 import type { ParsedInputs } from './inputs';
 
@@ -18,7 +19,9 @@ export function ResultsHeader({ inputs, unit, onUnitChange }: { inputs: ParsedIn
   return (
     <div className="card results-header" aria-label="Je invoer">
       <p className="hint" data-testid="input-summary">
-        {parts.join(' · ')} · <a href="#invoer">aanpassen</a>
+        {parts.join(' · ')} · <a href="#invoer" onClick={goToField('invoer')}>
+          aanpassen
+        </a>
       </p>
       <div className="seg" role="radiogroup" aria-label="Eenheid">
         <label className={unit === 'real' ? 'on' : ''}>
