@@ -518,5 +518,50 @@ describe('App', () => {
         expect(screen.queryByTestId('breakeven-marker')).toBeNull();
       });
     });
+
+    describe('folded fan chart (#28)', () => {
+      const fan = () => screen.getByTestId('fan-chart') as HTMLDetailsElement;
+      const points = (path: Element) => (path.getAttribute('d')!.match(/[ML]/g) ?? []).length;
+
+      it('is folded by default; opened it shows both fans for every year to the end of the term', async () => {
+        await fill();
+        expect(fan().tagName).toBe('DETAILS');
+        expect(fan().open).toBe(false);
+        expect(within(fan()).getByText('Hoe ontwikkelt je vermogen zich?').tagName).toBe('SUMMARY');
+        fan().open = true;
+        for (const id of ['fan-aflossen', 'fan-aandelen']) {
+          const panel = screen.getByTestId(id);
+          expect(panel.querySelector('.fan-p1090')).toBeTruthy();
+          expect(panel.querySelector('.fan-p2575')).toBeTruthy();
+          // 2027 to 2061: the year ends of a term that starts in January 2027
+          expect(points(panel.querySelector('.fan-median')!)).toBe(35);
+        }
+        expect(text('fan-aflossen-title')).toMatch(/^Extra aflossen/);
+        expect(text('fan-aandelen-title')).toMatch(/^Aandelen/);
+        // the fan ends at the eindvermogen shown in the duel
+        expect(text('fan-aflossen-end')).toBe(`eind ${text('duel-baseline-median')}`);
+        expect(text('fan-aandelen-end')).toBe(`eind ${text('duel-challenger-median')}`);
+      });
+
+      it('follows the challenger', async () => {
+        await fill();
+        fireEvent.change(select(), { target: { value: 'vastrentend' } });
+        expect(screen.queryByTestId('fan-aandelen')).toBeNull();
+        expect(screen.getByTestId('fan-vastrentend')).toBeTruthy();
+        expect(text('fan-vastrentend-end')).toBe(`eind ${text('duel-challenger-median')}`);
+        fireEvent.click(screen.getByTestId('strip-mix'));
+        expect(screen.getByTestId('fan-mix')).toBeTruthy();
+      });
+
+      it("follows the unit toggle between euro's van nu and nominaal", async () => {
+        await fill();
+        const median = () => screen.getByTestId('fan-aflossen').querySelector('.fan-median')!.getAttribute('d');
+        const real = { end: euros('fan-aflossen-end'), path: median() };
+        fireEvent.click(screen.getByLabelText(/Nominaal/));
+        expect(euros('fan-aflossen-end') / real.end).toBeGreaterThan(1.9);
+        expect(median()).not.toBe(real.path);
+        expect(text('fan-hint')).toMatch(/Nominaal/);
+      });
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { breakEvenSentence, formatPercent1, linearScale, niceTicks } from './charts';
+import { breakEvenSentence, fanBandPath, fanLinePath, fanSeries, formatPercent1, linearScale, niceTicks, yearTicks } from './charts';
 
 describe('chart helpers (#27)', () => {
   it('maps a domain linearly onto a range', () => {
@@ -46,5 +46,36 @@ describe('breakEvenSentence (#27)', () => {
     expect(breakEvenSentence({ outcome: { kind: 'aflossen-altijd' }, kwijtgescholden: 0 })).toBe(
       'Extra aflossen wint zelfs als de index gemiddeld 10% per jaar oplevert.',
     );
+  });
+});
+
+describe('fan chart helpers (#28)', () => {
+  // Two strategies × three years; every quantile set is 1..5 times a base.
+  const years = 3;
+  const fan = new Float32Array(2 * years * 5);
+  for (let s = 0; s < 2; s++) for (let y = 0; y < years; y++) for (let q = 0; q < 5; q++) fan[(s * years + y) * 5 + q] = (s + 1) * (y + 1) * 100 * (q + 1);
+  const summary = { firstYear: 2027, years, fan, deflatorByYear: new Float64Array([0.9, 0.8, 0.5]) };
+
+  it('reads one strategy per calendar year end, nominal or in euros van nu', () => {
+    const nominal = fanSeries(summary, 1, false);
+    expect(nominal.map((p) => p.year)).toEqual([2027, 2028, 2029]);
+    expect(nominal[2]!.q).toEqual({ p10: 600, p25: 1200, p50: 1800, p75: 2400, p90: 3000 });
+    const real = fanSeries(summary, 1, true);
+    expect(real[2]!.q.p50).toBeCloseTo(900, 9);
+    expect(real[0]!.q.p90).toBeCloseTo(1000 * 0.9, 9);
+  });
+
+  it('draws a band as one closed area and a quantile as a line', () => {
+    const pts = fanSeries(summary, 0, false);
+    const id = (v: number) => v;
+    expect(fanLinePath(pts, 'p50', id, id)).toBe('M2027.0,300.0L2028.0,600.0L2029.0,900.0');
+    expect(fanBandPath(pts, 'p10', 'p90', id, id)).toBe(
+      'M2027.0,500.0L2028.0,1000.0L2029.0,1500.0L2029.0,300.0L2028.0,200.0L2027.0,100.0Z',
+    );
+  });
+
+  it('labels whole calendar years inside the term only', () => {
+    expect(yearTicks(2026, 2061)).toEqual([2030, 2040, 2050, 2060]);
+    expect(yearTicks(2027, 2031)).toEqual([2027, 2028, 2029, 2030, 2031]);
   });
 });

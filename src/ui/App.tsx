@@ -18,6 +18,7 @@ import { EMPTY_DRAFT, monteCarloInput, parseInputs, rateInfo, resolveRate, type 
 import { useMonteCarlo } from './useMonteCarlo';
 import { RangeStrips } from './RangeStrips';
 import { BreakEvenChart } from './BreakEvenChart';
+import { FanChart } from './FanChart';
 import { buildDuel } from './duel';
 import { createBrowserMonteCarloClient, type MonteCarloClient } from '../worker/client';
 
@@ -44,7 +45,7 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
   const client = useMemo(() => (monteCarlo === undefined ? defaultClient() : monteCarlo), [monteCarlo]);
   const [draft, setDraft] = useState(initialDraft);
   // Results state the later tickets hook into: #27 sets the challenger from the range strips,
-  // #28 follows it, #31 persists both. Null challenger = the strategy with the best median.
+  // #28 (the fan chart) follows it, #31 persists both. Null challenger = the strategy with the best median.
   const [unit, setUnit] = useState<Unit>('real');
   const [challenger, setChallenger] = useState<StrategyKind | null>(null);
   const inputs = parseInputs(draft);
@@ -100,6 +101,15 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
             />
           )}
           {breakEven && <BreakEvenChart curve={breakEven} unit={unit} assumed={inputs.returns.equityReturn} />}
+          {client && monteCarloState.result && (
+            <FanChart
+              summary={monteCarloState.result.summary}
+              unit={unit}
+              challenger={monteCarloState.result.summary.strategies.indexOf(
+                buildDuel(monteCarloState.result.summary, challenger).challenger,
+              )}
+            />
+          )}
           <StrategyResult outcomes={outcomes} box3={inputs.box3} unit={unit} />
           <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>

@@ -7,7 +7,7 @@ import type { Strategy } from '../strategy/strategy';
 import { withRegimePath, type Box3Settings } from '../tax/regime';
 import { MONTE_CARLO_SEED } from './random';
 import { DEFAULT_SCENARIO_MODEL, drawEquityGrowth, drawYieldSeries, scenarioMarket, yieldHorizon, type ScenarioModel } from './scenario';
-import { pairedDifference, quantiles, shareAbove, winShare, PERCENTILES, sorted, percentileOfSorted, type Quantiles } from './stats';
+import { pairedDifference, quantiles, shareAbove, winShare, PERCENTILES, percentileOfSorted, type Quantiles } from './stats';
 
 /** N toekomsten per run (#18). */
 export const MONTE_CARLO_N = 5000;
@@ -333,9 +333,13 @@ export interface MonteCarloSummary {
   firstYear: number;
   years: number;
   deflatorEnd: number;
+  /** The deflator to euro's van nu at each year end (the last equals `deflatorEnd`). */
+  deflatorByYear: Float64Array;
   /**
-   * Fan-chart quantiles of the after-tax pot per strategy and year, nominal: P10, P25, P50, P75,
-   * P90 at `((s·years + y)·5 + q)`. Use `fanQuantiles`.
+   * Fan-chart quantiles of vermogen min schuld per strategy and year end, nominal (#28): the
+   * after-tax pot (as if sold) minus the restschuld in the same toekomst. In the last year the
+   * restschuld is forgiven, so the fan ends at the eindvermogen. P10, P25, P50, P75, P90 at
+   * `((s·years + y)·5 + q)`. Use `fanQuantiles`.
    */
   fan: Float32Array;
 }
@@ -348,7 +352,7 @@ function versus(values: Float32Array, baseline: Float32Array): VersusBaseline {
   };
 }
 
-/** Percentiles, winkans and fan-chart quantiles from a run's buffers. */
+/** Percentiles, winkans and fan-chart quantiles (vermogen min schuld) from a run's buffers. */
 export function summarizeMonteCarlo(run: MonteCarloRun): MonteCarloSummary {
   const S = run.strategies.length;
   const base = strategySlice(run, run.eindvermogen, 0);
@@ -368,11 +372,24 @@ export function summarizeMonteCarlo(run: MonteCarloRun): MonteCarloSummary {
   const fan = new Float32Array(S * run.years * Q);
   for (let s = 0; s < S; s++) {
     for (let y = 0; y < run.years; y++) {
-      const v = sorted(yearSlice(run, run.potByYear, s, y));
+      const pot = yearSlice(run, run.potByYear, s, y);
+      const schuld = yearSlice(run, run.restschuldByYear, s, y);
+      const last = y === run.years - 1; // the restschuld is forgiven at the end of the term
+      const net = new Float64Array(run.n);
+      for (let i = 0; i < run.n; i++) net[i] = last ? pot[i]! : pot[i]! - schuld[i]!;
+      const v = net.sort();
       for (let q = 0; q < Q; q++) fan[(s * run.years + y) * Q + q] = percentileOfSorted(v, PERCENTILES[q]!);
     }
   }
-  return { n: run.n, strategies, firstYear: run.firstYear, years: run.years, deflatorEnd: run.deflatorEnd, fan };
+  return {
+    n: run.n,
+    strategies,
+    firstYear: run.firstYear,
+    years: run.years,
+    deflatorEnd: run.deflatorEnd,
+    deflatorByYear: Float64Array.from(run.deflatorByYear),
+    fan,
+  };
 }
 
 /** Strategy `s`'s fan-chart quantiles in year index `y`, nominal. */

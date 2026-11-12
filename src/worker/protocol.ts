@@ -35,7 +35,7 @@ export function handleRequest(req: WorkerRequest): { response: WorkerResponse; t
     const summary = summarizeMonteCarlo(req.run);
     return {
       response: { id: req.id, kind: 'summarized', run: req.run, summary, ms: performance.now() - t0 },
-      transfer: [...runBuffers(req.run), summary.fan.buffer as ArrayBuffer],
+      transfer: [...runBuffers(req.run), summary.fan.buffer as ArrayBuffer, summary.deflatorByYear.buffer as ArrayBuffer],
     };
   } catch (e) {
     return { response: { id: req.id, kind: 'error', message: e instanceof Error ? e.message : String(e) }, transfer: [] };

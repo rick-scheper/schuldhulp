@@ -290,14 +290,31 @@ describe('summarizeMonteCarlo', () => {
     expect(summary.strategies[0]!.difference).toEqual({ p10: 0, p25: 0, p50: 0, p75: 0, p90: 0 });
   });
 
-  it('gives fan-chart quantiles of the after-tax pot per strategy and year', () => {
+  it('gives fan-chart quantiles of vermogen min schuld per strategy and year (#28)', () => {
     for (const s of [0, 2]) {
-      for (const y of [0, 10, 35]) {
-        const q = quantiles(yearSlice(run, run.potByYear, s, y));
+      for (const y of [0, 10, 34]) {
+        const pot = yearSlice(run, run.potByYear, s, y);
+        const schuld = yearSlice(run, run.restschuldByYear, s, y);
+        const q = quantiles(Array.from(pot, (v, i) => v - schuld[i]!));
         const f = fanQuantiles(summary, s, y);
         for (const k of ['p10', 'p25', 'p50', 'p75', 'p90'] as const) expect(f[k]).toBe(Math.fround(q[k]));
       }
     }
+  });
+
+  it('ends the fan at the eindvermogen: a restschuld left at the end of the term is forgiven (#28)', () => {
+    const last = summary.years - 1;
+    for (const s of [0, 2]) {
+      const q = quantiles(yearSlice(run, run.potByYear, s, last));
+      const f = fanQuantiles(summary, s, last);
+      for (const k of ['p10', 'p25', 'p50', 'p75', 'p90'] as const) expect(f[k]).toBe(Math.fround(q[k]));
+      expect(f.p50).toBeCloseTo(summary.strategies[s]!.eindvermogen.p50, 0);
+    }
+  });
+
+  it("carries the deflator to euro's van nu for every year end (#28)", () => {
+    expect(Array.from(summary.deflatorByYear)).toEqual(Array.from(run.deflatorByYear));
+    expect(summary.deflatorByYear[summary.years - 1]).toBeCloseTo(summary.deflatorEnd, 12);
   });
 });
 

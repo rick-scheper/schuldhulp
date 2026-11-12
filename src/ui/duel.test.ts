@@ -16,7 +16,7 @@ function summ(strategy: Strategy, p50: number, winkans: number, kwijt = 0, kwijt
 }
 
 function summary(strategies: StrategySummary[], deflatorEnd = 0.5): MonteCarloSummary {
-  return { n: 100, strategies, firstYear: 2027, years: 35, deflatorEnd, fan: new Float32Array(0) };
+  return { n: 100, strategies, firstYear: 2027, years: 35, deflatorEnd, deflatorByYear: new Float64Array(0), fan: new Float32Array(0) };
 }
 
 const MIX = mixStrategy(0.5, 0.5);

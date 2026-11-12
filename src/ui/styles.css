@@ -204,3 +204,20 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
   .strip, .strip-axis { grid-template-columns: 1fr; gap: 2px; }
   .strip-axis > span { display: none; }
 }
+
+/* Folded fan chart (#28) */
+.fan .fan-panel { margin: 12px 0 0; --fan: #94a3b8; }
+.fan .fan-panel.challenger { --fan: var(--accent); }
+.fan figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.fan-name { font-weight: 600; font-size: 0.9rem; }
+.fan figcaption .hint { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.fan-svg { display: block; width: 100%; height: auto; overflow: visible; margin-top: 4px; touch-action: pan-y; }
+.fan-p1090 { fill: var(--fan); opacity: 0.16; }
+.fan-p2575 { fill: var(--fan); opacity: 0.32; }
+.fan-median { fill: none; stroke: var(--fan); stroke-width: 2.5; stroke-linejoin: round; }
+.fan-other { fill: none; stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-linejoin: round; }
+.fan-hover { fill: var(--fan); stroke: var(--surface); stroke-width: 2; }
+@media (max-width: 560px) {
+  /* The fan's viewBox is scaled down to about 60% here; grow the labels to stay near 11px. */
+  .fan-svg .be-tick { font-size: 17px; }
+}
