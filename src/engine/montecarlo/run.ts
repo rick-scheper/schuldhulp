@@ -76,11 +76,30 @@ export interface MonteCarloRun {
   potByYear: Float32Array;
   restschuldByYear: Float32Array;
   termijnByYear: Float32Array;
+  /** The realisation tax included in `potByYear` (what selling the pot then costs; 0 under the forfait). */
+  realisationTaxByYear: Float32Array;
+  /**
+   * The DUO rate (fraction) for the month after each year end, per toekomst at `y·n + i`: the
+   * same for every strategy. For the koopbudget's wettelijk termijn (#30).
+   */
+  rateByYear: Float32Array;
+  /** Months of the terugbetaalfase still to pay after each year end (the whole term in the aanloopfase). */
+  remainingMonthsByYear: Int32Array;
 }
 
 /** The buffers of a run, for transferring them to the main thread. */
 export function runBuffers(run: MonteCarloRun): ArrayBuffer[] {
-  const arrays = [run.deflatorByYear, run.eindvermogen, run.kwijtgescholden, run.potByYear, run.restschuldByYear, run.termijnByYear];
+  const arrays = [
+    run.deflatorByYear,
+    run.eindvermogen,
+    run.kwijtgescholden,
+    run.potByYear,
+    run.restschuldByYear,
+    run.termijnByYear,
+    run.realisationTaxByYear,
+    run.rateByYear,
+    run.remainingMonthsByYear,
+  ];
   if (run.eindvermogenForfaitBlijft) arrays.push(run.eindvermogenForfaitBlijft);
   return arrays.map((a) => a.buffer as ArrayBuffer);
 }
@@ -103,6 +122,8 @@ interface Grid {
   years: number;
   /** Grid month index of each year end. */
   yearEndIndex: Int32Array;
+  /** Months of the term left after each year end. */
+  remainingMonths: Int32Array;
 }
 
 function grid(plan: MonteCarloPlan): Grid {
@@ -110,11 +131,16 @@ function grid(plan: MonteCarloPlan): Grid {
   const endMonth = addMonths(plan.repaymentStart, (plan.termMonths ?? SF35_TERM_MONTHS) - 1);
   const firstYear = plan.today.year;
   const years = endMonth.year - firstYear + 1;
+  const termMonths = plan.termMonths ?? SF35_TERM_MONTHS;
   const yearEndIndex = new Int32Array(years);
+  const remainingMonths = new Int32Array(years);
   for (let y = 0; y < years; y++) {
-    yearEndIndex[y] = Math.min(months - 1, monthsBetween(plan.today, { year: firstYear + y, month: 12 }));
+    const end = { year: firstYear + y, month: 12 };
+    yearEndIndex[y] = Math.min(months - 1, monthsBetween(plan.today, end));
+    const paid = monthsBetween(plan.repaymentStart, end) + 1; // months of the term paid by this year end
+    remainingMonths[y] = Math.max(0, Math.min(termMonths, termMonths - paid));
   }
-  return { months, endMonth, firstYear, years, yearEndIndex };
+  return { months, endMonth, firstYear, years, yearEndIndex, remainingMonths };
 }
 
 /**
@@ -189,12 +215,18 @@ export function runMonteCarlo(input: MonteCarloInput, slice?: MonteCarloSlice): 
   const potByYear = new Float32Array(S * g.years * n);
   const restschuldByYear = new Float32Array(S * g.years * n);
   const termijnByYear = new Float32Array(S * g.years * n);
+  const realisationTaxByYear = new Float32Array(S * g.years * n);
+  const rateByYear = new Float32Array(g.years * n);
 
   // In the constant-rate mode the rentepad does not depend on the toekomst.
   const sharedPad = input.rate.constant ? scenarioRentepad(input, 0) : undefined;
 
   for (let i = 0; i < n; i++) {
     const ctx = scenarioContext(input, first + i, sharedPad);
+    const pad = ctx.plan.rentepad!;
+    for (let y = 0; y < g.years; y++) {
+      rateByYear[y * n + i] = pad[Math.min(pad.length - 1, g.yearEndIndex[y]! + 1)] ?? 0;
+    }
     for (let s = 0; s < S; s++) {
       const strategy = input.strategies[s]!;
       const o = simulateStrategy(ctx.plan, strategy, ctx.market, { referencePayments: ctx.ref, potByYear: true });
@@ -207,6 +239,7 @@ export function runMonteCarlo(input: MonteCarloInput, slice?: MonteCarloSlice): 
         potByYear[at] = row.afterTax;
         restschuldByYear[at] = row.restschuld;
         termijnByYear[at] = row.termijn;
+        realisationTaxByYear[at] = row.realisationTax;
       }
       if (eindvermogenForfaitBlijft) {
         eindvermogenForfaitBlijft[s * n + i] = pairedSeparately
@@ -237,6 +270,9 @@ export function runMonteCarlo(input: MonteCarloInput, slice?: MonteCarloSlice): 
     potByYear,
     restschuldByYear,
     termijnByYear,
+    realisationTaxByYear,
+    rateByYear,
+    remainingMonthsByYear: g.remainingMonths,
   };
 }
 
@@ -304,6 +340,19 @@ export function mergeRuns(parts: MonteCarloRun[]): MonteCarloRun {
     potByYear: perYear((r) => r.potByYear),
     restschuldByYear: perYear((r) => r.restschuldByYear),
     termijnByYear: perYear((r) => r.termijnByYear),
+    realisationTaxByYear: perYear((r) => r.realisationTaxByYear),
+    rateByYear: (() => {
+      const out = new Float32Array(Y * n);
+      for (let y = 0; y < Y; y++) {
+        let at = y * n;
+        for (const r of sorted) {
+          out.set(r.rateByYear.subarray(y * r.n, (y + 1) * r.n), at);
+          at += r.n;
+        }
+      }
+      return out;
+    })(),
+    remainingMonthsByYear: Int32Array.from(head.remainingMonthsByYear),
   };
 }
 

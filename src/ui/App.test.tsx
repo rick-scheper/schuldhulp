@@ -609,3 +609,85 @@ describe('App', () => {
     });
   });
 });
+
+describe('mortgage koopbudget note (#30)', () => {
+  let runs = 0;
+  function testClient(): MonteCarloClient {
+    const worker = (): WorkerLike => {
+      const w: WorkerLike = {
+        onmessage: null,
+        postMessage(message: WorkerRequest) {
+          const { response } = handleRequest(message);
+          setTimeout(() => w.onmessage?.({ data: response } as MessageEvent<WorkerResponse>), 0);
+        },
+        terminate() {},
+      };
+      return w;
+    };
+    const client = createMonteCarloClient(worker, 2);
+    return {
+      run: (input) => {
+        runs++;
+        return client.run({ ...input, n: 60 });
+      },
+      dispose: client.dispose,
+    };
+  }
+  const fill = async () => {
+    render(<App today={ym(2027, 1)} monteCarlo={testClient()} />);
+    fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: '30.000' } });
+    fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+    fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: '200' } });
+    await waitFor(() => expect(screen.getByTestId('mortgage-note')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByTestId('mc-running')).toBeNull());
+  };
+  const text = (id: string) => screen.getByTestId(id).textContent!.replace(/\s/g, ' ');
+  const slider = () => screen.getByLabelText('Hypotheek over aantal jaar') as HTMLInputElement;
+
+  it('sits after "Waar rust deze berekening op?", labelled as not scored, with the slider at 5 years', async () => {
+    await fill();
+    const note = screen.getByTestId('mortgage-note');
+    const assumptions = screen.getByTestId('assumptions');
+    expect(assumptions.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(note.textContent).toMatch(/telt niet mee in de vergelijking/);
+    expect(slider().value).toBe('5');
+    expect(slider().min).toBe('0');
+    expect(slider().max).toBe('15');
+    expect(text('hypotheek-jaren')).toBe('5 jaar');
+    expect(text('koopbudget-baseline-median')).toMatch(/^[+−]?€ [\d.]+$/);
+    expect(text('koopbudget-challenger-dekt')).toMatch(/is je pot groot genoeg om de schuld af te lossen\.$/);
+    expect(text('koopbudget-k')).toMatch(/^(Aflossen bij DUO levert hier € \d,\d\d hypotheekruimte per euro op|Je schuld is dan)/);
+    expect(text('koopbudget-eindvermogen')).toBe('Dit verandert je eindvermogen; de uitslag hierboven gaat ervan uit dat je blijft beleggen.');
+    expect(text('koopbudget-caveat')).toMatch(/inkomen je hypotheek begrenst.*Trhk.*kosten koper, NHG/);
+    // From 2029: the realisation tax line (end 2032 here).
+    expect(screen.getByTestId('koopbudget-challenger-box3')).toBeTruthy();
+    expect(within(screen.getByTestId('assumption-hypotheek')).getByText(/Tijdelijke regeling hypothecair krediet/)).toBeTruthy();
+  });
+
+  it('the slider recomputes on the main thread, without a new Monte Carlo run', async () => {
+    await fill();
+    const before = runs;
+    const at5 = text('koopbudget-challenger');
+    fireEvent.change(slider(), { target: { value: '1' } });
+    expect(text('hypotheek-jaren')).toBe('1 jaar');
+    expect(text('koopbudget-challenger')).not.toBe(at5);
+    expect(screen.queryByTestId('koopbudget-challenger-box3')).toBeNull(); // end 2028: forfait
+    fireEvent.change(slider(), { target: { value: '12' } });
+    expect(text('hypotheek-jaren')).toBe('12 jaar');
+    expect(screen.queryByTestId('mc-running')).toBeNull();
+    expect(runs).toBe(before);
+  });
+
+  it('follows the challenger and the unit toggle', async () => {
+    await fill();
+    const name = () => screen.getByTestId('koopbudget-challenger').querySelector('.eyebrow')!.textContent;
+    expect(name()).toBe('Aandelen');
+    fireEvent.change(screen.getByLabelText('Uitdager'), { target: { value: 'mix' } });
+    expect(name()).toMatch(/^Mix/);
+    expect(text('koopbudget-difference')).toMatch(/met mix|Met mix/);
+    const real = Number(text('koopbudget-challenger-pot').replace(/[^\d]/g, ''));
+    fireEvent.click(screen.getByLabelText(/Nominaal/));
+    const nominal = Number(text('koopbudget-challenger-pot').replace(/[^\d]/g, ''));
+    expect(nominal).toBeGreaterThan(real);
+  });
+});

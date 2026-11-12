@@ -37,10 +37,10 @@ describe('rekenregels config (#29)', () => {
   it('records a source and an ISO retrieval date for every figure', () => {
     const iso = /^\d{4}-\d{2}-\d{2}$/;
     const r = REKENREGELS;
-    for (const d of [r.bijgewerktTot, r.duo.sf35RatesRetrieved, r.duo.draagkracht.retrieved, r.yield.snapshot.retrieved, r.yield.snapshot.date, r.box3.forfait.retrieved, r.box3.werkelijk.retrieved, r.box3.statusPer]) {
+    for (const d of [r.bijgewerktTot, r.duo.sf35RatesRetrieved, r.duo.draagkracht.retrieved, r.yield.snapshot.retrieved, r.yield.snapshot.date, r.box3.forfait.retrieved, r.box3.werkelijk.retrieved, r.box3.statusPer, r.hypotheek.retrieved, r.hypotheek.geldigVanaf]) {
       expect(d).toMatch(iso);
     }
-    for (const s of [r.duo.sf35RatesSource, r.duo.draagkracht.source, r.yield.snapshot.source, r.box3.forfait.source, r.box3.werkelijk.source, r.box3.statusSource]) {
+    for (const s of [r.duo.sf35RatesSource, r.duo.draagkracht.source, r.yield.snapshot.source, r.box3.forfait.source, r.box3.werkelijk.source, r.box3.statusSource, r.hypotheek.source]) {
       expect(s.length).toBeGreaterThan(10);
     }
   });

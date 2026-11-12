@@ -61,6 +61,29 @@ export interface Rekenregels {
     statusPer: string;
     statusSource: string;
   };
+  /**
+   * The mortgage side note (#11, #13, #30): how the DUO termijn lowers the maximum mortgage under
+   * the Tijdelijke regeling hypothecair krediet (Trhk). Not scored.
+   */
+  hypotheek: {
+    /**
+     * The toetsrente the note assumes, constant (#11: not projected). A model assumption within
+     * the Trhk, not a published figure: lenders use the quoted rate for a rentevaste periode of
+     * 10 years or more (art. 3 lid 9–10).
+     */
+    toetsrente: number;
+    /** Trhk art. 3 lid 2 and 4: a 30-year annuity, paid monthly in arrears. */
+    looptijdMonths: number;
+    /**
+     * Trhk art. 3a lid 2: the bruteringsfactor by toetsrente, for a mortgage with (partly)
+     * deductible interest. Each band runs up to and including `totEnMet`; the last is open.
+     */
+    bruteringsfactoren: readonly { totEnMet: number; factor: number }[];
+    /** The Trhk version the table comes from (ISO date it took effect). */
+    geldigVanaf: string;
+    source: string;
+    retrieved: string;
+  };
 }
 
 export const REKENREGELS: Rekenregels = {
@@ -139,6 +162,26 @@ export const REKENREGELS: Rekenregels = {
     statusPer: '2026-11-12',
     statusSource:
       'docs/research/box3-novelle-37053.md; https://www.tweedekamer.nl/downloads/document?id=2026D55254 (aanbiedingsbrief novelle, 3-11-2026)',
+  },
+  hypotheek: {
+    toetsrente: 0.04,
+    looptijdMonths: 360,
+    bruteringsfactoren: [
+      { totEnMet: 0.02, factor: 1.05 },
+      { totEnMet: 0.025, factor: 1.1 },
+      { totEnMet: 0.03, factor: 1.15 },
+      { totEnMet: 0.04, factor: 1.2 },
+      { totEnMet: 0.045, factor: 1.25 },
+      { totEnMet: 0.055, factor: 1.3 },
+      { totEnMet: 0.06, factor: 1.35 },
+      { totEnMet: Infinity, factor: 1.4 },
+    ],
+    // wetten.overheid.nl lists a change to art. 3 and bijlage 1 per 2027-01-01; art. 3a (this
+    // table) is not part of it. Recheck when the 2027 version is in force.
+    geldigVanaf: '2026-01-01',
+    source:
+      'Tijdelijke regeling hypothecair krediet, art. 3 lid 2, 4 en 12, art. 3a, https://wetten.overheid.nl/BWBR0032503/2026-01-01; docs/research/mortgage-impact.md (#11)',
+    retrieved: '2026-11-12',
   },
 };
 

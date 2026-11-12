@@ -65,4 +65,15 @@ describe('"Waar rust deze berekening op?" (#12, #29)', () => {
     expect(v).toMatch(/3,2% op 30 oktober 2026/);
     expect(v).toMatch(/3,5%/);
   });
+
+  it('carries the mortgage assumptions of #11 and #13 (#30)', () => {
+    const v = item(assumptionItems(inputs()), 'hypotheek').value;
+    expect(v).toMatch(/^Telt niet mee in de vergelijking/);
+    expect(v).toMatch(/Tijdelijke regeling hypothecair krediet \(2026, art\. 3a\)/);
+    expect(v).toMatch(/bruteringsfactor van 1,20 bij een toetsrente van 4,0%/);
+    expect(v).toMatch(/€\s100 per maand termijn kost zo ongeveer €\s25\.000 hypotheek/);
+    expect(v).toMatch(/opnieuw berekent/);
+    expect(v).toMatch(/inkomen je hypotheek begrenst/);
+    expect(v).toMatch(/kosten koper, NHG/);
+  });
 });

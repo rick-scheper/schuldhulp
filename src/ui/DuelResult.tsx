@@ -185,7 +185,7 @@ function DuelSide({ side, scale, testId }: { side: Duel['baseline']; scale: numb
 }
 
 /** A small ⓘ that shows its explanation on click. */
-function Info({ label, children }: { label: string; children: React.ReactNode }) {
+export function Info({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <>

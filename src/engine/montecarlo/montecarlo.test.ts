@@ -166,7 +166,7 @@ describe('runMonteCarlo', () => {
 
   it('check e: identical inputs give identical output, bit for bit; another seed differs', () => {
     const again = runMonteCarlo(input());
-    for (const key of ['eindvermogen', 'kwijtgescholden', 'eindvermogenForfaitBlijft', 'potByYear', 'restschuldByYear', 'termijnByYear'] as const) {
+    for (const key of ['eindvermogen', 'kwijtgescholden', 'eindvermogenForfaitBlijft', 'potByYear', 'restschuldByYear', 'termijnByYear', 'realisationTaxByYear', 'rateByYear', 'remainingMonthsByYear'] as const) {
       expect(new Uint8Array(again[key]!.buffer)).toEqual(new Uint8Array(run[key]!.buffer));
     }
     const other = runMonteCarlo(input({ seed: 1 }));
@@ -257,7 +257,7 @@ describe('runMonteCarlo', () => {
     const parts = splitToekomsten(40, 3).map((slice) => runMonteCarlo(input(), slice));
     expect(parts.map((p) => p.n)).toEqual([13, 13, 14]);
     const merged = mergeRuns([parts[2]!, parts[0]!, parts[1]!]);
-    const keys = ['eindvermogen', 'kwijtgescholden', 'eindvermogenForfaitBlijft', 'potByYear', 'restschuldByYear', 'termijnByYear'] as const;
+    const keys = ['eindvermogen', 'kwijtgescholden', 'eindvermogenForfaitBlijft', 'potByYear', 'restschuldByYear', 'termijnByYear', 'realisationTaxByYear', 'rateByYear', 'remainingMonthsByYear'] as const;
     for (const key of keys) expect(Array.from(merged[key]!)).toEqual(Array.from(run[key]!));
     expect(merged.n).toBe(40);
     expect(() => mergeRuns([parts[0]!, parts[2]!])).toThrow(/consecutive/);

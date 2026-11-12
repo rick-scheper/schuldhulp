@@ -23,6 +23,8 @@ import { Assumptions } from './Assumptions';
 import { box3StatusKort, rekenregelsStamp } from './rekenregels';
 import { BOX3_WERKELIJK } from '../engine';
 import { buildDuel } from './duel';
+import { MortgageNote } from './MortgageNote';
+import { HYPOTHEEK_JAREN_DEFAULT } from './mortgage';
 import { createBrowserMonteCarloClient, type MonteCarloClient } from '../worker/client';
 
 function currentMonth(): YearMonth {
@@ -51,6 +53,8 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
   // #28 (the fan chart) follows it, #31 persists both. Null challenger = the strategy with the best median.
   const [unit, setUnit] = useState<Unit>('real');
   const [challenger, setChallenger] = useState<StrategyKind | null>(null);
+  // The hypotheekmoment of the mortgage note (#13, #30), in years from now; #31 persists it.
+  const [hypotheekJaren, setHypotheekJaren] = useState(HYPOTHEEK_JAREN_DEFAULT);
   const inputs = parseInputs(draft);
   const rate = inputs && resolveRate(inputs, today);
   const plan = inputs && rate?.ok ? { ...inputs, today, annualRate: rate.annualRate, rentepad: rate.rentepad } : null;
@@ -75,6 +79,8 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
     [draft, today.year, today.month],
   );
   const monteCarloState = useMonteCarlo(client, plan && inputs && strategies ? monteCarloInput(inputs, today, strategies) : null);
+  const mc = monteCarloState.result;
+  const challengerIndex = mc ? mc.summary.strategies.indexOf(buildDuel(mc.summary, challenger).challenger) : 0;
 
   return (
     <main className="page">
@@ -104,17 +110,18 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
             />
           )}
           {breakEven && <BreakEvenChart curve={breakEven} unit={unit} assumed={inputs.returns.equityReturn} />}
-          {client && monteCarloState.result && (
-            <FanChart
-              summary={monteCarloState.result.summary}
+          {client && mc && <FanChart summary={mc.summary} unit={unit} challenger={challengerIndex} />}
+          <Assumptions inputs={inputs} />
+          {client && mc && (
+            <MortgageNote
+              run={mc.run}
+              challenger={challengerIndex}
               unit={unit}
-              challenger={monteCarloState.result.summary.strategies.indexOf(
-                buildDuel(monteCarloState.result.summary, challenger).challenger,
-              )}
+              box3={inputs.box3}
+              jaren={hypotheekJaren}
+              onJarenChange={setHypotheekJaren}
             />
           )}
-          <Assumptions inputs={inputs} />
-          {/* The mortgage note (#18) goes here, after "Waar rust deze berekening op?". */}
           <StrategyResult outcomes={outcomes} box3={inputs.box3} unit={unit} />
           <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>

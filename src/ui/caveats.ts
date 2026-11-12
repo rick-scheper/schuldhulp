@@ -1,4 +1,5 @@
-import { DEFAULT_EQUITY_SIGMA, DIVIDENDLEK, REKENREGELS, type Rekenregels } from '../engine';
+import { bruteringsfactor, DEFAULT_EQUITY_SIGMA, DIVIDENDLEK, hypotheekVerlaging, REKENREGELS, type Rekenregels } from '../engine';
+import { formatAmount } from './format';
 import { FIELD_IDS, type FieldId } from './fields';
 import { pct, type ParsedInputs } from './inputs';
 import { box3StatusKort, formatDateLong } from './rekenregels';
@@ -82,7 +83,15 @@ export function assumptionItems(inputs: ParsedInputs, r: Rekenregels = REKENREGE
     {
       key: 'hypotheek',
       title: 'Hypotheek',
-      value: 'Wat je strategie betekent voor je hypotheek telt niet mee in de vergelijking.',
+      value:
+        `Telt niet mee in de vergelijking. Het koopbudget volgt de Tijdelijke regeling hypothecair krediet ` +
+        `(${r.hypotheek.geldigVanaf.slice(0, 4)}, art. 3a): de geldverstrekker telt je wettelijke DUO-termijn mee, maal een ` +
+        `bruteringsfactor van ${bruteringsfactor(r.hypotheek.toetsrente, r.hypotheek).toLocaleString('nl-NL', { minimumFractionDigits: 2 })} ` +
+        `bij een toetsrente van ${pct(r.hypotheek.toetsrente)}%. Elke € 100 per maand termijn kost zo ongeveer ` +
+        `${formatAmount(hypotheekVerlaging(100, r.hypotheek.toetsrente, r.hypotheek))} hypotheek, los van je inkomen. Aflossen uit je pot ` +
+        `verlaagt de termijn alleen als DUO hem opnieuw berekent, dezelfde aanname als bij extra aflossen. Geldt alleen als ` +
+        `je inkomen je hypotheek begrenst, niet de waarde van de woning. Niet meegerekend: kosten koper, NHG en de kosten ` +
+        `van eerder verkopen van vastrentend.`,
       fieldId: null,
     },
     {

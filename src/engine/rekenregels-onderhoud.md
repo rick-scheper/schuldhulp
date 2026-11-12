@@ -50,7 +50,16 @@ law changes status. Work on a branch; CI must be green before merging.
       chip and the "Waar rust deze berekening op?" texts still read well.
 - [ ] Update `docs/research/box3-novelle-37053.md` (or a successor note) with what changed.
 
-## 6. Close out
+## 6. Hypotheek (Trhk)
+
+- [ ] Check the Tijdelijke regeling hypothecair krediet in force from 1 January
+      (https://wetten.overheid.nl/BWBR0032503): art. 3a (bruteringsfactor table) and art. 3 lid 2 and
+      4 (30-year monthly annuity). Update `REKENREGELS.hypotheek` (`bruteringsfactoren`,
+      `looptijdMonths`, `geldigVanaf`, `source`, `retrieved`) and `docs/research/mortgage-impact.md`.
+- [ ] Check that the assumed `toetsrente` (4,0%) is still a typical 10-year-fixed rate; it is a model
+      assumption (#11), not a published figure.
+
+## 7. Close out
 
 - [ ] Set `REKENREGELS.bijgewerktTot` to today's date: the footer stamp shows it.
 - [ ] `npm test` and `npm run build` pass; check the footer stamp on the results screen.

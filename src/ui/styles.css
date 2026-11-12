@@ -229,3 +229,16 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 /* "Waar rust deze berekening op?" */
 .assumptions ol { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; }
 .assumptions li { overflow-wrap: anywhere; }
+
+/* Mortgage koopbudget note (#30): not scored, after "Waar rust deze berekening op?". */
+.mortgage h2 { margin: 0 0 12px; }
+.mortgage-slider { display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px; }
+.mortgage-slider input { width: 100%; }
+.mortgage .duel-grid { margin-top: 12px; }
+.mortgage-figures { margin: 10px 0 0; display: grid; gap: 2px; font-size: 0.9rem; text-align: left; }
+.mortgage-figures > div { display: flex; justify-content: space-between; gap: 12px; }
+.mortgage-figures dt { color: var(--text-muted); }
+.mortgage-figures dd { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mortgage-figures .sub { padding-left: 12px; font-size: 0.85rem; }
+.mortgage-diff { font-size: 1.05rem; margin: 16px 0 8px; }
+.mortgage p { overflow-wrap: anywhere; }
