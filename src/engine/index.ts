@@ -9,3 +9,4 @@ export * from './tax';
 export * from './montecarlo';
 export * from './rekenregels';
 export * from './mortgage/koopbudget';
+export * from './income/forecast';

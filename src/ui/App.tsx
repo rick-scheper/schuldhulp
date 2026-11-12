@@ -14,7 +14,7 @@ import { ScheduleResult } from './ScheduleResult';
 import { DuelResult, type Unit } from './DuelResult';
 import { ResultsHeader } from './ResultsHeader';
 import { StrategyResult } from './StrategyResult';
-import { monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
+import { incomeOutlook, monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
 import { useMonteCarlo } from './useMonteCarlo';
 import { RangeStrips } from './RangeStrips';
 import { BreakEvenChart } from './BreakEvenChart';
@@ -60,7 +60,7 @@ export function App({ today = currentMonth(), initialDraft, monteCarlo }: Props)
   const setUnit = (u: Unit) => update({ unit: u });
   const setChallenger = (c: StrategyKind | null) => update({ challenger: c });
   const setHypotheekJaren = (j: number) => update({ hypotheekJaren: j });
-  const inputs = parseInputs(draft);
+  const inputs = parseInputs(draft, today);
   const rate = inputs && resolveRate(inputs, today);
   const plan = inputs && rate?.ok ? { ...inputs, today, annualRate: rate.annualRate, rentepad: rate.rentepad } : null;
 
@@ -95,7 +95,7 @@ export function App({ today = currentMonth(), initialDraft, monteCarlo }: Props)
       </header>
       {session.shared && <SharedBanner onAdopt={session.adopt} onBack={session.back} />}
       {session.notice && <LinkNotice onDismiss={session.dismissNotice} />}
-      <InputForm draft={draft} onChange={setDraft} rateInfo={rateInfo(draft, today)} />
+      <InputForm draft={draft} onChange={setDraft} rateInfo={rateInfo(draft, today)} incomeOutlook={incomeOutlook(draft, today)} />
       <SharePanel
         key={encodeState(session.state)}
         makeUrl={() => shareUrl(session.state)}

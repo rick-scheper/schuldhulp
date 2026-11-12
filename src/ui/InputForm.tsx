@@ -1,19 +1,22 @@
-import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, DIVIDENDLEK, EQUITY_INDICES, SF35_DRAAGKRACHT, YIELD_SNAPSHOT, type EquityIndex, type FreedUpDestination, type VastrentendProduct } from '../engine';
-import { formatEuro } from './format';
+import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, DIVIDENDLEK, COLLECTIVE_LONG_TERM, COLLECTIVE_MEDIUM_TERM, EQUITY_INDICES, SECTORS, SF35_DRAAGKRACHT, YIELD_SNAPSHOT, type EquityIndex, type FreedUpDestination, type Opleidingsniveau, type Sector, type VastrentendProduct } from '../engine';
+import { formatEuro, formatInputEuro } from './format';
 import { FIELD_IDS } from './fields';
 import { box3StatusKort } from './rekenregels';
-import { defaultTerPct, pct, type InputDraft, type RateInfo } from './inputs';
+import { defaultTerPct, pct, type IncomeOutlook, type InputDraft, type RateInfo } from './inputs';
 
 interface Props {
   draft: InputDraft;
   onChange: (draft: InputDraft) => void;
   /** The current rate period and its pre-filled rate; null until the start of the terugbetaalfase is valid. */
   rateInfo: RateInfo | null;
+  /** The expected income path shown under the inkomensvoorspelling fields. */
+  incomeOutlook: IncomeOutlook;
 }
 
 type StringKey = { [K in keyof InputDraft]: InputDraft[K] extends string ? K : never }[keyof InputDraft];
 
-export function InputForm({ draft, onChange, rateInfo }: Props) {
+export function InputForm({ draft, onChange, rateInfo, incomeOutlook }: Props) {
+  const fixedGrowth = draft.incomeGrowthPct.trim() !== '';
   const set = (key: StringKey) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...draft, [key]: e.target.value });
 
@@ -71,6 +74,56 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             {SF35_DRAAGKRACHT.voetYear}), met je inkomen van twee jaar eerder. Leeg: je betaalt het wettelijk maandbedrag.
           </span>
         </label>
+
+        {draft.income.trim() !== '' && !fixedGrowth && (
+          <>
+            <label className="field">
+              <span className="field-label">Sector</span>
+              <select value={draft.sector} onChange={(e) => onChange({ ...draft, sector: e.target.value as Sector })}>
+                {Object.entries(SECTORS).map(([id, info]) => (
+                  <option key={id} value={id}>
+                    {info.label}
+                  </option>
+                ))}
+              </select>
+              <span className="hint">
+                Waar je werkt of verwacht te werken. De cao-lonen stijgen op lange termijn in elke sector ongeveer even
+                hard; de sectoren verschillen vooral in hoe snel je salaris met je ervaring groeit.
+              </span>
+            </label>
+
+            <label className="field">
+              <span className="field-label">Opleiding</span>
+              <select
+                value={draft.opleidingsniveau}
+                onChange={(e) => onChange({ ...draft, opleidingsniveau: e.target.value as Opleidingsniveau })}
+              >
+                <option value="hbo">Hbo</option>
+                <option value="wo">Wo</option>
+              </select>
+            </label>
+
+            <label className="field">
+              <span className="field-label">Afstudeerjaar</span>
+              <input
+                inputMode="numeric"
+                placeholder={incomeOutlook.derivedGraduationYear === null ? 'jaar' : String(incomeOutlook.derivedGraduationYear)}
+                value={draft.graduationYear}
+                onChange={set('graduationYear')}
+              />
+              <span className="hint">
+                Optioneel: het jaar waarin je studiefinanciering stopte. Leeg: drie jaar voor je terugbetaalfase. Je
+                salaris groeit het hardst in de eerste tien jaar daarna en vlakt rond je 25e werkjaar af.
+              </span>
+            </label>
+          </>
+        )}
+
+        {incomeOutlook.points.length > 0 && (
+          <p className="hint field-wide" data-testid="income-outlook">
+            {incomeOutlookText(incomeOutlook, fixedGrowth)}
+          </p>
+        )}
 
         <label className="field">
           <span className="field-label">Overig box 3-vermogen</span>
@@ -199,12 +252,15 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field">
             <span className="field-label">Inkomensgroei</span>
             <span className="input-wrap">
-              <input inputMode="decimal" value={draft.incomeGrowthPct} onChange={set('incomeGrowthPct')} />
+              <input id={FIELD_IDS.incomeGrowth} inputMode="decimal" placeholder="voorspelling" value={draft.incomeGrowthPct} onChange={set('incomeGrowthPct')} />
               <span className="affix">%</span>
             </span>
             <span className="hint">
-              Per jaar, nominaal (standaard 2,4%: de loonstijging volgens de Commissie Parameters). Alleen gebruikt als je
-              een inkomen invult. De draagkrachtvrije voet groeit mee met 2,4%.
+              Leeg: de inkomensvoorspelling voor je sector, opleiding en afstudeerjaar. Die volgt de cao-lonen (CPB:
+              {' '}{pct(SECTORS.algemeen.recent[3])}% in 2027, {pct(COLLECTIVE_MEDIUM_TERM)}% tot en met 2034, daarna{' '}
+              {pct(COLLECTIVE_LONG_TERM)}%) plus de groei door werkervaring, en de draagkrachtvrije voet groeit mee met de
+              cao-lonen. Vul je een percentage in, dan groeit je inkomen elk jaar even hard (nominaal) en de voet met{' '}
+              {pct(SF35_DRAAGKRACHT.voetGrowth)}%. Alleen gebruikt als je een inkomen invult.
             </span>
           </label>
 
@@ -345,4 +401,12 @@ function rateHint(info: RateInfo | null): string {
     return `Optioneel. Je studeert nog: je rente verandert elk jaar tot je aanloopfase begint, daarna staat hij steeds 5 jaar vast. ${fill}`;
   }
   return `Optioneel. Je rentevaste periode loopt van ${info.startYear} tot en met ${info.endYear}. ${fill}`;
+}
+
+function incomeOutlookText(o: IncomeOutlook, fixed: boolean): string {
+  const points = o.points.map((p) => `${p.year}: ${formatInputEuro(Math.round(p.income / 100) * 100)}`).join(' · ');
+  const lead = fixed
+    ? 'Verwacht bruto jaarinkomen'
+    : `Inkomensvoorspelling: +${pct(o.nextYearGrowth ?? 0)}% volgend jaar, gemiddeld +${pct(o.tenYearGrowth ?? 0)}% per jaar de komende tien jaar. Bruto jaarinkomen`;
+  return `${lead} (nominaal) ${points}.`;
 }

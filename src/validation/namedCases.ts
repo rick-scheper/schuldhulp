@@ -63,7 +63,7 @@ export function rekenhulpNamedCase(f: RekenhulpFixture, surplus = REKENHULP_SEED
  * compute it: the "rente blijft gelijk" mode of the app, whatever the draft says.
  */
 export function constantRateSchedule(c: NamedCase): DuoSchedule {
-  const inputs = parseInputs({ ...c.draft, constantRate: true });
+  const inputs = parseInputs({ ...c.draft, constantRate: true }, c.today);
   if (!inputs) throw new Error(`${c.id}: the form inputs do not parse`);
   const rate = resolveRate(inputs, c.today);
   if (!rate.ok) throw new Error(`${c.id}: ${rate.message}`);
@@ -72,7 +72,7 @@ export function constantRateSchedule(c: NamedCase): DuoSchedule {
 
 /** The Monte Carlo run and summary of a named case for `seed`, at the app's N = 5,000. */
 export function runNamedCase(c: NamedCase, seed: number): { run: MonteCarloRun; summary: MonteCarloSummary } {
-  const inputs = parseInputs(c.draft);
+  const inputs = parseInputs(c.draft, c.today);
   if (!inputs) throw new Error(`${c.id}: the form inputs do not parse`);
   const strategies = standardStrategies({
     mixAflossenShare: inputs.mixAflossenShare,

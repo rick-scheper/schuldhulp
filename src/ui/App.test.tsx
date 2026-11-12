@@ -63,9 +63,28 @@ describe('App', () => {
       expect(screen.getByRole('region', { name: 'Strategieën' }).textContent).toMatch(/telt niet mee in je eindvermogen/);
     });
 
-    it('offers income growth under Geavanceerd, 2,4% by default', () => {
+    it('uses the inkomensvoorspelling by default: the growth field is empty and the outlook is shown', () => {
       fill('50.000');
-      expect((screen.getByLabelText(/Inkomensgroei/) as HTMLInputElement).value).toBe('2,4');
+      expect((screen.getByLabelText(/Inkomensgroei/) as HTMLInputElement).value).toBe('');
+      expect((screen.getByLabelText(/Afstudeerjaar/) as HTMLInputElement).placeholder).toBe('2024');
+      expect(text('income-outlook')).toMatch(/^Inkomensvoorspelling: \+\d+,\d% volgend jaar/);
+    });
+
+    it('lets the sector and opleiding change the forecast', () => {
+      fill('50.000');
+      const algemeen = text('income-outlook');
+      fireEvent.change(screen.getByLabelText(/^Sector/), { target: { value: 'zorg' } });
+      const zorg = text('income-outlook');
+      expect(zorg).not.toBe(algemeen);
+      fireEvent.change(screen.getByLabelText(/^Opleiding/), { target: { value: 'wo' } });
+      expect(text('income-outlook')).not.toBe(zorg);
+    });
+
+    it('hides the forecast fields when a fixed income growth is typed', () => {
+      fill('50.000');
+      fireEvent.change(screen.getByLabelText(/Inkomensgroei/), { target: { value: '2,4' } });
+      expect(screen.queryByLabelText(/^Sector/)).toBeNull();
+      expect(text('income-outlook')).toMatch(/^Verwacht bruto jaarinkomen/);
     });
   });
 

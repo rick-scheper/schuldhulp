@@ -1,4 +1,4 @@
-import { bruteringsfactor, DEFAULT_EQUITY_SIGMA, DIVIDENDLEK, hypotheekVerlaging, REKENREGELS, type Rekenregels } from '../engine';
+import { bruteringsfactor, COLLECTIVE_LONG_TERM, COLLECTIVE_MEDIUM_TERM, DEFAULT_EQUITY_SIGMA, DIVIDENDLEK, hypotheekVerlaging, REKENREGELS, type GrowthSeries, type Rekenregels } from '../engine';
 import { formatAmount } from './format';
 import { FIELD_IDS, type FieldId } from './fields';
 import { pct, type ParsedInputs } from './inputs';
@@ -100,6 +100,7 @@ export function assumptionItems(inputs: ParsedInputs, r: Rekenregels = REKENREGE
       value: `${pct(inputs.inflation)}% per jaar, elk jaar gelijk.`,
       fieldId: FIELD_IDS.inflation,
     },
+    ...(inputs.income ? [incomeItem(inputs.income.growth)] : []),
     {
       key: 'verkocht',
       title: 'Pot verkocht aan het eind',
@@ -117,4 +118,20 @@ export function assumptionItems(inputs: ParsedInputs, r: Rekenregels = REKENREGE
       fieldId: null,
     },
   ];
+}
+
+/** Shown only with an income: how the income path for draagkracht grows. */
+function incomeItem(growth: number | GrowthSeries): AssumptionItem {
+  return {
+    key: 'inkomen',
+    title: 'Inkomensgroei',
+    value:
+      typeof growth === 'number'
+        ? `${pct(growth)}% per jaar (nominaal), elk jaar gelijk; de draagkrachtvrije voet groeit mee met 2,4%.`
+        : `De inkomensvoorspelling: cao-lonen volgens het CPB (${pct(COLLECTIVE_MEDIUM_TERM)}% per jaar tot en met 2034, ` +
+          `daarna ${pct(COLLECTIVE_LONG_TERM)}%) plus groei door werkervaring voor je sector en opleiding, volgens CBS-cijfers ` +
+          'over hbo- en wo-afgestudeerden. Een verwachting, geen garantie: deeltijd, van baan wisselen en tegenvallers ' +
+          'zitten er niet in, en je inkomen is in elke toekomst hetzelfde.',
+    fieldId: FIELD_IDS.incomeGrowth,
+  };
 }

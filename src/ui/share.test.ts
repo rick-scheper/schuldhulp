@@ -27,6 +27,9 @@ const FULL: SavedState = state(
     periodEndYear: '2029',
     inleg: '5000',
     income: '45000',
+    sector: 'zorg',
+    opleidingsniveau: 'wo',
+    graduationYear: '2024',
     overigVermogen: '10000',
     equityIndex: 'msciWorld',
     vastrentendPct: '2,5',
@@ -94,7 +97,7 @@ describe('decodeState', () => {
   it('round-trips to an identical Monte Carlo input (the seed is fixed in the app)', () => {
     const today = ym(2027, 1);
     const mc = (s: SavedState) => {
-      const inputs = parseInputs(s.draft)!;
+      const inputs = parseInputs(s.draft, today)!;
       return monteCarloInput(inputs, today, standardStrategies(inputs));
     };
     expect(mc(decodeState(encodeState(FULL)).state)).toEqual(mc(FULL));

@@ -4,10 +4,16 @@ import { FIELD_IDS } from './fields';
 import { EMPTY_DRAFT, parseInputs, type InputDraft } from './inputs';
 
 const inputs = (over: Partial<InputDraft> = {}) =>
-  parseInputs({ ...EMPTY_DRAFT, debt: '30.000', repaymentStart: '2027-01', surplus: '200', ...over })!;
+  parseInputs({ ...EMPTY_DRAFT, debt: '30.000', repaymentStart: '2027-01', surplus: '200', ...over }, { year: 2026, month: 11 })!;
 const item = (items: ReturnType<typeof assumptionItems>, key: string) => items.find((i) => i.key === key)!;
 
 describe('"Waar rust deze berekening op?" (#12, #29)', () => {
+  it('adds the inkomensgroei only when an income is given, forecast or fixed', () => {
+    expect(assumptionItems(inputs()).some((i) => i.key === 'inkomen')).toBe(false);
+    expect(item(assumptionItems(inputs({ income: '45.000' })), 'inkomen').value).toMatch(/inkomensvoorspelling/);
+    expect(item(assumptionItems(inputs({ income: '45.000', incomeGrowthPct: '3' })), 'inkomen').value).toMatch(/^3,0% per jaar/);
+  });
+
   it('lists the 9 caveats of #12 and the termijn best case of #14', () => {
     const items = assumptionItems(inputs());
     expect(items.map((i) => i.key)).toEqual([

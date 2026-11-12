@@ -2,7 +2,8 @@ import { parseDutchNumber } from './format';
 import {
   DEFAULT_EQUITY_INDEX,
   DEFAULT_EQUITY_RETURN,
-  DEFAULT_INCOME_GROWTH,
+  DEFAULT_OPLEIDINGSNIVEAU,
+  DEFAULT_SECTOR,
   DEFAULT_BOX3_REGIME_PATH,
   DEFAULT_INFLATION,
   DEFAULT_KWIJTSCHELDING_BELAST,
@@ -12,6 +13,11 @@ import {
   DEFAULT_SCENARIO_MODEL,
   EQUITY_INDICES,
   addMonths,
+  graduationYearFromRepaymentStart,
+  growthInYear,
+  incomeForecast,
+  incomeInYear,
+  voetForecast,
   buildRentepad,
   currentRatePeriod,
   defaultCurrentRate,
@@ -26,6 +32,8 @@ import {
   type EquityIndex,
   type FreedUpDestination,
   type IncomePath,
+  type Opleidingsniveau,
+  type Sector,
   type ReturnAssumptions,
   type VastrentendProduct,
   type YearMonth,
@@ -43,6 +51,11 @@ export interface InputDraft {
   inleg: string;
   /** Gross yearly income (≈ toetsingsinkomen); empty = no draagkracht. */
   income: string;
+  /** Inkomensvoorspelling: the sector the user (expects to) work in. */
+  sector: Sector;
+  opleidingsniveau: Opleidingsniveau;
+  /** Year the user finished studying; empty = derived from the start of the terugbetaalfase. */
+  graduationYear: string;
   /** Overig box 3-vermogen; empty = €0. */
   overigVermogen: string;
   equityIndex: EquityIndex;
@@ -55,6 +68,7 @@ export interface InputDraft {
   equityReturnPct: string;
   terPct: string;
   inflationPct: string;
+  /** A fixed nominal income growth; empty = the inkomensvoorspelling (sector, opleiding, afstudeerjaar). */
   incomeGrowthPct: string;
   /** "Rente blijft gelijk": every rentevaste periode keeps the current rate. */
   constantRate: boolean;
@@ -87,6 +101,9 @@ export const EMPTY_DRAFT: InputDraft = {
   periodEndYear: '',
   inleg: '',
   income: '',
+  sector: DEFAULT_SECTOR,
+  opleidingsniveau: DEFAULT_OPLEIDINGSNIVEAU,
+  graduationYear: '',
   overigVermogen: '',
   equityIndex: DEFAULT_EQUITY_INDEX,
   vastrentendPct: pct(DEFAULT_VASTRENTEND_RATE),
@@ -95,7 +112,7 @@ export const EMPTY_DRAFT: InputDraft = {
   equityReturnPct: pct(DEFAULT_EQUITY_RETURN),
   terPct: defaultTerPct(DEFAULT_EQUITY_INDEX),
   inflationPct: pct(DEFAULT_INFLATION),
-  incomeGrowthPct: pct(DEFAULT_INCOME_GROWTH),
+  incomeGrowthPct: '',
   constantRate: false,
   thetaPct: pct(DEFAULT_VASICEK.theta),
   indexSurplus: true,
@@ -134,7 +151,31 @@ function parsePct(raw: string, max: number): number | null {
   return v === null || v > max ? null : v / 100;
 }
 
-export function parseInputs(d: InputDraft): ParsedInputs | null {
+/** The afstudeerjaar the inkomensvoorspelling uses: the typed year, else derived; null when invalid. */
+export function graduationYear(d: InputDraft, repaymentStart: YearMonth, today: YearMonth): number | null {
+  const raw = d.graduationYear.trim();
+  if (raw === '') return graduationYearFromRepaymentStart(repaymentStart.year);
+  if (!/^\d{4}$/.test(raw)) return null;
+  const year = Number(raw);
+  return year >= today.year - 45 && year <= today.year + 10 ? year : null;
+}
+
+/** The income path of a draft: a fixed growth when one is typed, else the inkomensvoorspelling. */
+function incomePath(d: InputDraft, income: number, repaymentStart: YearMonth, today: YearMonth): IncomePath | null {
+  if (d.incomeGrowthPct.trim() !== '') {
+    const growth = parsePct(d.incomeGrowthPct, 20);
+    return growth === null ? null : { income, growth };
+  }
+  const grad = graduationYear(d, repaymentStart, today);
+  if (grad === null) return null;
+  return {
+    income,
+    growth: incomeForecast({ sector: d.sector, opleidingsniveau: d.opleidingsniveau, graduationYear: grad }, today.year),
+    voetGrowth: voetForecast(today.year),
+  };
+}
+
+export function parseInputs(d: InputDraft, today: YearMonth): ParsedInputs | null {
   const debt = parseDutchNumber(d.debt);
   const repaymentStart = parseYearMonth(d.repaymentStart);
   const surplus = parseDutchNumber(d.surplus);
@@ -148,7 +189,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
   const ter = parsePct(d.terPct, 5);
   const inflation = parsePct(d.inflationPct, 20);
   const income = d.income.trim() === '' ? undefined : parseDutchNumber(d.income);
-  const incomeGrowth = parsePct(d.incomeGrowthPct, 20);
+  const path = income == null || repaymentStart === null ? undefined : incomePath(d, income, repaymentStart, today);
   const theta = parsePct(d.thetaPct, 20);
   if (
     debt === null ||
@@ -163,7 +204,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     ter === null ||
     inflation === null ||
     income === null ||
-    incomeGrowth === null ||
+    path === null ||
     theta === null
   ) {
     return null;
@@ -177,7 +218,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     constantRate: d.constantRate,
     theta,
     inleg,
-    income: income === undefined ? null : { income, growth: incomeGrowth },
+    income: path ?? null,
     inflation,
     indexSurplus: d.indexSurplus,
     returns: { equityReturn, ter, vastrentendRate },
@@ -190,6 +231,35 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
       regimePath: d.forfaitBlijft ? 'forfait-blijft' : 'werkelijk-vanaf-2029',
       kwijtscheldingBelast: d.kwijtscheldingBelast,
     },
+  };
+}
+
+/** What the form shows about the expected income: the inkomensvoorspelling or the fixed growth. */
+export interface IncomeOutlook {
+  /** The afstudeerjaar derived from the terugbetaalfase (the field's placeholder); null without a valid start. */
+  derivedGraduationYear: number | null;
+  /** Expected gross income at a few later years; empty without a valid income and path. */
+  points: { year: number; income: number }[];
+  /** Expected nominal growth into next year. */
+  nextYearGrowth: number | null;
+  /** Average nominal growth per year over the next 10 years. */
+  tenYearGrowth: number | null;
+}
+
+export const INCOME_OUTLOOK_OFFSETS = [5, 10, 20] as const;
+
+export function incomeOutlook(d: InputDraft, today: YearMonth): IncomeOutlook {
+  const repaymentStart = parseYearMonth(d.repaymentStart);
+  const derivedGraduationYear = repaymentStart ? graduationYearFromRepaymentStart(repaymentStart.year) : null;
+  const income = d.income.trim() === '' ? null : parseDutchNumber(d.income);
+  const path = income !== null && repaymentStart ? incomePath(d, income, repaymentStart, today) : null;
+  if (!path) return { derivedGraduationYear, points: [], nextYearGrowth: null, tenYearGrowth: null };
+  const at = (n: number) => incomeInYear(today.year + n, path, today.year);
+  return {
+    derivedGraduationYear,
+    points: INCOME_OUTLOOK_OFFSETS.map((n) => ({ year: today.year + n, income: at(n) })),
+    nextYearGrowth: growthInYear(path.growth, today.year + 1),
+    tenYearGrowth: Math.pow(at(10) / at(0), 1 / 10) - 1,
   };
 }
 

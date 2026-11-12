@@ -6,7 +6,7 @@
  * are written, so improved defaults reach old links. Decoding never throws: every value that
  * cannot be read falls back to its default and is reported, so the page can show a notice.
  */
-import { parseYearMonth, type EquityIndex, type FreedUpDestination, type StrategyKind, type VastrentendProduct } from '../engine';
+import { parseYearMonth, type EquityIndex, type Opleidingsniveau, type Sector, type FreedUpDestination, type StrategyKind, type VastrentendProduct } from '../engine';
 import type { Unit } from './DuelResult';
 import { parseDutchNumber } from './format';
 import { EMPTY_DRAFT, defaultTerPct, type InputDraft } from './inputs';
@@ -136,6 +136,13 @@ const FIELDS: AnyField[] = [
   draftField('rvp', 'periodEndYear', pattern(/^\d{4}$/)),
   draftField('inleg', 'inleg', numberText),
   draftField('inkomen', 'income', numberText),
+  draftField(
+    'sector',
+    'sector',
+    choice<Sector>({ algemeen: 'algemeen', zorg: 'zorg', financieel: 'financieel', ict: 'ict', zakelijk: 'zakelijk', onderwijs: 'onderwijs', overheid: 'overheid' }),
+  ),
+  draftField('opl', 'opleidingsniveau', choice<Opleidingsniveau>({ hbo: 'hbo', wo: 'wo' })),
+  draftField('afgestudeerd', 'graduationYear', pattern(/^\d{4}$/)),
   draftField('overig', 'overigVermogen', numberText),
   draftField('index', 'equityIndex', choice<EquityIndex>({ sp500: 'sp500', msciWorld: 'world' })),
   draftField('vr', 'vastrentendPct', numberText),

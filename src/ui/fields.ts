@@ -7,6 +7,7 @@ export const FIELD_IDS = {
   kwijtscheldingBelast: 'switch-kwijtschelding-belast',
   equityReturn: 'field-equity-return',
   inflation: 'field-inflation',
+  incomeGrowth: 'field-income-growth',
   theta: 'field-theta',
   constantRate: 'switch-constant-rate',
 } as const;

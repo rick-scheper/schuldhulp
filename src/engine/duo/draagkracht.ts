@@ -12,12 +12,42 @@ import { REKENREGELS } from '../rekenregels';
 /** Default nominal income growth per year: CP wage inflation (#8). */
 export const DEFAULT_INCOME_GROWTH = 0.024;
 
+/**
+ * Nominal growth that differs per calendar year: `rates[i]` is the growth from year
+ * `firstYear + i − 1` to `firstYear + i`; every year outside the list grows with `rest`.
+ */
+export interface GrowthSeries {
+  firstYear: number;
+  rates: readonly number[];
+  rest: number;
+}
+
+/** The growth into calendar year `year` (from `year − 1`). */
+export function growthInYear(series: number | GrowthSeries, year: number): number {
+  if (typeof series === 'number') return series;
+  return series.rates[year - series.firstYear] ?? series.rest;
+}
+
+/** The factor that takes a value in `from` to its value in `to` (below 1 when `to` is earlier). */
+export function growthFactor(series: number | GrowthSeries, from: number, to: number): number {
+  if (typeof series === 'number') return Math.pow(1 + series, to - from);
+  let f = 1;
+  for (let y = from + 1; y <= to; y++) f *= 1 + growthInYear(series, y);
+  for (let y = from; y > to; y--) f /= 1 + growthInYear(series, y);
+  return f;
+}
+
 /** The user's income path: gross yearly income (≈ toetsingsinkomen) and its growth. */
 export interface IncomePath {
   /** Gross yearly income in the base year (the year of `today`). */
   income: number;
-  /** Nominal yearly growth of that income (0.024 = 2.4%). */
-  growth: number;
+  /** Nominal yearly growth of that income: one rate (0.024 = 2.4%) or a per-year series (the inkomensvoorspelling). */
+  growth: number | GrowthSeries;
+  /**
+   * The wage growth the draagkrachtvrije voet follows on this path; absent = the rules' `voetGrowth`.
+   * The inkomensvoorspelling sets it to the collective wage path, as the WML follows cao wages.
+   */
+  voetGrowth?: GrowthSeries;
 }
 
 export interface DraagkrachtRules {
@@ -47,12 +77,12 @@ export const SF35_DRAAGKRACHT: DraagkrachtRules = {
 
 /** Income in calendar year `year` on the path that starts in `baseYear`. */
 export function incomeInYear(year: number, path: IncomePath, baseYear: number): number {
-  return path.income * Math.pow(1 + path.growth, year - baseYear);
+  return path.income * growthFactor(path.growth, baseYear, year);
 }
 
-/** Draagkrachtvrije voet in calendar year `year`. */
-export function draagkrachtVoet(year: number, rules: DraagkrachtRules): number {
-  return rules.voet * Math.pow(1 + rules.voetGrowth, year - rules.voetYear);
+/** Draagkrachtvrije voet in calendar year `year`; `growth` overrides the rules' indexation. */
+export function draagkrachtVoet(year: number, rules: DraagkrachtRules, growth: number | GrowthSeries = rules.voetGrowth): number {
+  return rules.voet * growthFactor(growth, rules.voetYear, year);
 }
 
 /** The monthly draagkracht cap for termijnen in calendar year `year`. */
@@ -63,5 +93,5 @@ export function draagkrachtPerMonth(
   rules: DraagkrachtRules = SF35_DRAAGKRACHT,
 ): number {
   const income = incomeInYear(year - rules.peiljaarLag, path, baseYear);
-  return Math.max(0, income - draagkrachtVoet(year, rules)) * rules.pct / 12;
+  return Math.max(0, income - draagkrachtVoet(year, rules, path.voetGrowth)) * rules.pct / 12;
 }
