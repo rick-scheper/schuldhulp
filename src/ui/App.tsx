@@ -5,11 +5,13 @@ import {
   constantMarket,
   standardStrategies,
   ym,
+  type StrategyKind,
   type YearMonth,
 } from '../engine';
 import { InputForm } from './InputForm';
 import { ScheduleResult } from './ScheduleResult';
-import { SpreadResult } from './SpreadResult';
+import { DuelResult, type Unit } from './DuelResult';
+import { ResultsHeader } from './ResultsHeader';
 import { StrategyResult } from './StrategyResult';
 import { EMPTY_DRAFT, monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
 import { useMonteCarlo } from './useMonteCarlo';
@@ -37,6 +39,10 @@ function defaultClient(): MonteCarloClient | null {
 export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteCarlo }: Props) {
   const client = useMemo(() => (monteCarlo === undefined ? defaultClient() : monteCarlo), [monteCarlo]);
   const [draft, setDraft] = useState(initialDraft);
+  // Results state the later tickets hook into: #27 sets the challenger from the range strips,
+  // #28 follows it, #31 persists both. Null challenger = the strategy with the best median.
+  const [unit, setUnit] = useState<Unit>('real');
+  const [challenger, setChallenger] = useState<StrategyKind | null>(null);
   const inputs = parseInputs(draft);
   const rate = inputs && resolveRate(inputs, today);
   const plan = inputs && rate?.ok ? { ...inputs, today, annualRate: rate.annualRate, rentepad: rate.rentepad } : null;
@@ -51,7 +57,8 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
   // Cheap enough (≤ 420 months) to recompute on every render.
   const schedule = plan && buildDuoSchedule(plan);
   const outcomes = plan && inputs && strategies && compareStrategies(plan, strategies, constantMarket(inputs.returns));
-  // The Monte Carlo runs off the main thread (#25); the table above stays the fixed-return explainer until #26.
+  // The Monte Carlo runs off the main thread (#25) and drives the verdict and duel (#26); the
+  // fixed-return table stays as a folded explainer.
   const monteCarloState = useMonteCarlo(client, plan && inputs && strategies ? monteCarloInput(inputs, today, strategies) : null);
 
   return (
@@ -63,8 +70,17 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
       <InputForm draft={draft} onChange={setDraft} rateInfo={rateInfo(draft, today)} />
       {schedule && outcomes && inputs && rate?.ok ? (
         <>
-          {client && <SpreadResult state={monteCarloState} />}
-          <StrategyResult outcomes={outcomes} box3={inputs.box3} />
+          <ResultsHeader inputs={inputs} unit={unit} onUnitChange={setUnit} />
+          {client && (
+            <DuelResult
+              state={monteCarloState}
+              unit={unit}
+              challenger={challenger}
+              onChallengerChange={setChallenger}
+              box3={inputs.box3}
+            />
+          )}
+          <StrategyResult outcomes={outcomes} box3={inputs.box3} unit={unit} />
           <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>
       ) : (
@@ -72,12 +88,19 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
           {rate && !rate.ok ? rate.message : 'Vul je studieschuld, de start van je terugbetaalfase en je surplus in.'}
         </p>
       )}
-      <footer className="hint">
-        Geen financieel advies. De spreiding rekent met 5.000 toekomsten van rente en aandelenkoersen; de tabel
-        eronder met één verwacht verloop van de rente, vaste rendementen. Beide met{' '}
-        {draft.forfaitBlijft
-          ? 'het huidige box 3-forfait voor de hele looptijd.'
-          : 'box 3: het huidige forfait tot en met 2028, daarna werkelijk rendement volgens het wetsvoorstel.'}
+      <footer className="hint" data-testid="footer">
+        <p>
+          Schuldhulp geeft geen financieel advies. De uitkomsten zijn een rekenvoorbeeld op basis van aannames en
+          vereenvoudigingen; je kunt er geen rechten aan ontlenen. Voor je studieschuld zijn de gegevens van DUO leidend,
+          voor je belasting die van de Belastingdienst. Twijfel je, vraag dan advies aan een onafhankelijk adviseur.
+        </p>
+        <p>
+          Het oordeel rekent met 5.000 mogelijke toekomsten van rente en aandelenkoersen; het rekenvoorbeeld met één
+          verwacht verloop van de rente en vaste rendementen. Beide met{' '}
+          {draft.forfaitBlijft
+            ? 'het huidige box 3-forfait voor de hele looptijd.'
+            : 'box 3: het huidige forfait tot en met 2028, daarna werkelijk rendement volgens het wetsvoorstel (nog geen wet).'}
+        </p>
       </footer>
     </main>
   );

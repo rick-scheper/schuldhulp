@@ -295,16 +295,12 @@ describe('App', () => {
     };
     const euros = (id: string) => Number(screen.getByTestId(id).textContent!.replace(/[^\d,]/g, '').replace(',', '.'));
 
-    it('shows the doorsnee uitkomst and P10–P90 per strategy once the worker is done', async () => {
+    it('shows the verdict and the duel once the worker is done', async () => {
       const seen: MonteCarloInput[] = [];
       fill(seen);
-      await waitFor(() => expect(screen.getByTestId('spread')).toBeTruthy());
-      for (const kind of ['aflossen', 'vastrentend', 'aandelen', 'mix']) {
-        const cells = within(screen.getByTestId(`spread-${kind}`)).getAllByRole('cell').map((c) => c.textContent);
-        expect(cells).toHaveLength(5);
-        expect(euros(`median-${kind}`)).toBeGreaterThan(0);
-      }
-      expect(screen.getByRole('region', { name: 'Spreiding' }).textContent).toMatch(/toekomsten/);
+      await waitFor(() => expect(screen.getByTestId('verdict')).toBeTruthy());
+      expect(euros('duel-baseline-median')).toBeGreaterThan(0);
+      expect(euros('duel-challenger-median')).toBeGreaterThan(0);
       expect(screen.queryByTestId('mc-running')).toBeNull();
     });
 
@@ -320,7 +316,7 @@ describe('App', () => {
       expect(seen.at(-1)!.model!.vasicek.theta).toBe(0.05);
       // The deterministic rentepad follows θ too.
       expect(screen.getByTestId('total-paid').textContent).not.toBe(before);
-      await waitFor(() => expect(screen.getByTestId('spread')).toBeTruthy());
+      await waitFor(() => expect(screen.getByTestId('verdict')).toBeTruthy());
     });
 
     it('"rente blijft gelijk" switches the Monte Carlo to the constant-rate rentepad', async () => {
@@ -329,16 +325,145 @@ describe('App', () => {
       expect(seen.at(-1)!.rate.constant).toBe(false);
       fireEvent.click(screen.getByLabelText(/Rente blijft gelijk/));
       expect(seen.at(-1)!.rate.constant).toBe(true);
-      await waitFor(() => expect(screen.getByTestId('spread')).toBeTruthy());
+      await waitFor(() => expect(screen.getByTestId('verdict')).toBeTruthy());
     });
 
-    it('without workers the page still works, without the spreiding', () => {
+    it('without workers the page still works, without the duel', () => {
       render(<App today={ym(2027, 1)} monteCarlo={null} />);
       fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: '30.000' } });
       fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
       fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: '200' } });
       expect(screen.getByTestId('termijn')).toBeTruthy();
-      expect(screen.queryByRole('region', { name: 'Spreiding' })).toBeNull();
+      expect(screen.queryByRole('region', { name: 'Duel' })).toBeNull();
+    });
+  });
+
+  describe('verdict + duel (#26)', () => {
+    function testClient(): MonteCarloClient {
+      const worker = (): WorkerLike => {
+        const w: WorkerLike = {
+          onmessage: null,
+          postMessage(message: WorkerRequest) {
+            const { response } = handleRequest(message);
+            setTimeout(() => w.onmessage?.({ data: response } as MessageEvent<WorkerResponse>), 0);
+          },
+          terminate() {},
+        };
+        return w;
+      };
+      const client = createMonteCarloClient(worker, 2);
+      return { run: (input) => client.run({ ...input, n: 60 }), dispose: client.dispose };
+    }
+    const fill = async (debt = '30.000', surplus = '200', income?: string) => {
+      render(<App today={ym(2027, 1)} monteCarlo={testClient()} />);
+      fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: debt } });
+      fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+      fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: surplus } });
+      if (income) fireEvent.change(screen.getByLabelText(/Bruto jaarinkomen/), { target: { value: income } });
+      await waitFor(() => expect(screen.getByTestId('verdict')).toBeTruthy());
+      await waitFor(() => expect(screen.queryByTestId('mc-running')).toBeNull());
+    };
+    const text = (id: string) => screen.getByTestId(id).textContent!.replace(/\s/g, ' ');
+    const euros = (id: string) => Number(screen.getByTestId(id).textContent!.replace(/[^\d]/g, ''));
+    const greenDots = () => screen.getByTestId('win-dots').querySelectorAll('.dot.win').length;
+    const select = () => screen.getByLabelText('Uitdager') as HTMLSelectElement;
+
+    it('echoes the inputs in a header with an "aanpassen" link back to the form', async () => {
+      await fill();
+      expect(text('input-summary')).toMatch(/^Studieschuld € 30\.000 · terugbetalen vanaf januari 2027 · € 200 per maand over/);
+      const link = screen.getByRole('link', { name: 'aanpassen' });
+      expect(link.getAttribute('href')).toBe('#invoer');
+      expect(document.getElementById('invoer')?.tagName).toBe('FORM');
+    });
+
+    it('defaults the challenger to the best median and words the verdict as a doorsnee uitkomst', async () => {
+      await fill();
+      expect(select().value).toBe('aandelen'); // 100% aandelen has the best median here
+      expect(text('verdict')).toMatch(/^In een doorsnee toekomst levert aandelen € [\d.]+ meer op dan extra aflossen\.$/);
+      expect(text('verdict-sub')).toMatch(/^In \d+ van de 100 toekomsten beter, in \d+ slechter\.$/);
+      // 2 significant figures
+      for (const id of ['duel-baseline-median', 'duel-challenger-median']) {
+        expect(text(id)).toMatch(/^€ [\d.]+$/);
+        expect(String(euros(id)).replace(/0+$/, '').length).toBeLessThanOrEqual(2);
+      }
+      expect(text('duel-baseline-range')).toMatch(/^8 van de 10 toekomsten eindigen tussen € [\d.]+ en € [\d.]+\. 1 op de 10 eindigt lager dan € [\d.]+\.$/);
+      expect(screen.getByTestId('eerder-schuldenvrij')).toBeTruthy();
+    });
+
+    it('shows the winkans as 100 dots matching the heading', async () => {
+      await fill();
+      const heading = text('winkans-heading');
+      const m = heading.match(/^Van 100 mogelijke toekomsten wint aandelen er (\d+)$/);
+      expect(m).not.toBeNull();
+      expect(screen.getByTestId('win-dots').querySelectorAll('.dot')).toHaveLength(100);
+      expect(greenDots()).toBe(Number(m![1]));
+      expect(text('median-difference')).toMatch(/^\+€ [\d.]+$/);
+    });
+
+    it('the challenger dropdown updates the verdict, the duel and the dots', async () => {
+      await fill();
+      const before = { verdict: text('verdict'), median: text('duel-challenger-median'), dots: greenDots() };
+      fireEvent.change(select(), { target: { value: 'vastrentend' } });
+      expect(select().value).toBe('vastrentend');
+      expect(text('verdict')).toMatch(/vastrentend/);
+      expect(text('verdict')).not.toBe(before.verdict);
+      expect(text('duel-challenger-median')).not.toBe(before.median);
+      expect(text('winkans-heading')).toMatch(/vastrentend/);
+      expect(greenDots()).not.toBe(before.dots);
+      // vastrentend loses to aflossen here: the "aflossen wint" wording, without the eerder-schuldenvrij line
+      expect(text('verdict')).toMatch(/^In een doorsnee toekomst levert extra aflossen € [\d.]+ meer op dan vastrentend\.$/);
+      expect(screen.queryByTestId('eerder-schuldenvrij')).toBeNull();
+    });
+
+    it("the unit toggle switches the duel between euro's van nu and nominaal", async () => {
+      await fill();
+      const real = euros('duel-baseline-median');
+      fireEvent.click(screen.getByLabelText(/Nominaal/));
+      const nominal = euros('duel-baseline-median');
+      expect(nominal / real).toBeGreaterThan(1.9);
+      expect(nominal / real).toBeLessThan(2.1); // 1,02^35 ≈ 2,0, give or take the rounding
+    });
+
+    it('carries the disclaimer under the verdict and the longer text in the footer', async () => {
+      await fill();
+      expect(text('disclaimer')).toBe('Een rekenvoorbeeld op basis van aannames, geen financieel advies. Je eigen situatie kan afwijken.');
+      const footer = text('footer');
+      expect(footer).toMatch(/geen financieel advies/);
+      expect(footer).toMatch(/geen rechten aan ontlenen/);
+      expect(footer).toMatch(/DUO leidend/);
+      expect(footer).toMatch(/Belastingdienst/);
+    });
+
+    it('never says "scenario", "naar verwachting" or "worst case"', async () => {
+      await fill('60.000', '300', '30.000');
+      const page = document.body.textContent!.toLowerCase();
+      for (const banned of ['scenario', 'naar verwachting', 'worst case']) expect(page).not.toContain(banned);
+    });
+
+    it('shows no kwijtschelding callout when the debt is paid off', async () => {
+      await fill();
+      expect(screen.queryByTestId('kwijtschelding-callout')).toBeNull();
+    });
+
+    it('shows the kwijtschelding callout with its chance and how it is taxed, linking to the switch', async () => {
+      await fill('60.000', '300', '30.000');
+      const callout = text('kwijtschelding-callout');
+      expect(callout).toMatch(/Je schuld wordt waarschijnlijk deels kwijtgescholden \(doorsnee € [\d.]+\)/);
+      expect(callout).toMatch(/Kans op kwijtschelding: (in \d+ van de 100 toekomsten|vrijwel altijd)/);
+      expect(text('kwijtschelding-tax')).toMatch(/vermogenswinst, met ongeveer 36% belasting/);
+      const link = within(screen.getByTestId('kwijtschelding-tax')).getByRole('link', { name: 'wijzig' });
+      const toggle = screen.getByLabelText(/Kwijtschelding belast in box 3/) as HTMLInputElement;
+      expect(link.getAttribute('href')).toBe(`#${toggle.id}`);
+      const details = toggle.closest('details')!;
+      details.open = false;
+      fireEvent.click(link);
+      expect(details.open).toBe(true);
+      expect(document.activeElement).toBe(toggle);
+
+      fireEvent.click(toggle);
+      await waitFor(() => expect(text('kwijtschelding-tax')).toMatch(/als onbelast/));
+      fireEvent.click(screen.getByLabelText(/Huidig forfait blijft gelden/));
+      await waitFor(() => expect(text('kwijtschelding-tax')).toMatch(/onder het huidige forfait is kwijtschelding onbelast/));
     });
   });
 });

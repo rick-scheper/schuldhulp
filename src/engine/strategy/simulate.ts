@@ -40,7 +40,10 @@ export interface StrategyMonth {
   balanceAfter: number;
   equityPot: number;
   vastrentendPot: number;
-  /** Box 3 tax levied this month (at the end of each calendar year), nominal. */
+  /**
+   * The strategy's box 3 tax levied this month (at the end of each calendar year), nominal: the
+   * household tax minus what the overig box 3-vermogen would cost on its own. Can be negative.
+   */
   box3Tax: number;
   /** Part of earlier box 3 tax the pots could not pay, taken from this month's money instead. */
   taxFromSurplus: number;
@@ -68,7 +71,10 @@ export interface StrategyOutcome {
   debtFreeMonth: YearMonth | null;
   totalExtraAflossen: number;
   totalInvested: number;
-  /** Box 3 tax over the whole term, nominal (sum of the yearly amounts). */
+  /**
+   * The strategy's box 3 tax over the whole term, nominal (sum of the yearly amounts): the
+   * household tax minus the tax the overig box 3-vermogen would cost on its own.
+   */
   box3TaxNominal: number;
   /** Same, each year's tax deflated from the month it was paid: in euro's van nu. */
   box3TaxReal: number;
@@ -236,6 +242,9 @@ function run(
   // Box 3 bookkeeping per calendar year.
   const box3 = p.box3 ? createBox3Regime(p.box3, p.inflation) : null;
   const overig0 = p.box3?.overigVermogen ?? 0;
+  // The tax the overig box 3-vermogen would cost on its own (no pot, no DUO debt). It is the same
+  // for every strategy, so only the household tax above it is charged to the strategy (#26).
+  const overigAlone = p.box3 && overig0 > 0 ? createBox3Regime(p.box3, p.inflation) : null;
   const overigAt = (year: number) => (overig0 === 0 ? 0 : overig0 * Math.pow(1 + p.inflation, year - p.today.year));
   let jan1: Box3Year['jan1'] = { equity: 0, vastrentend: 0, overig: overigAt(p.today.year), debt: loan.balance };
   let equityDeposits = 0;
@@ -268,7 +277,7 @@ function run(
     if (p.indexSurplus && i > 0 && i % 12 === 0) surplus = p.surplus * Math.pow(1 + p.inflation, i / 12);
     const budget = (ref[i] ?? 0) + surplus + (i === 0 ? p.inleg : 0);
     let allocatable = Math.max(0, budget - termijnPaid);
-    // Box 3 tax the pots could not pay comes first.
+    // Box 3 tax the pots could not pay comes first (a negative arrear is a saving added to the money).
     const taxFromSurplus = Math.min(taxArrears, allocatable);
     taxArrears -= taxFromSurplus;
     allocatable -= taxFromSurplus;
@@ -307,13 +316,28 @@ function run(
           kwijtschelding: final ? loan.balance : 0,
         });
         box3Years?.push(y);
-        box3Tax = y.tax;
+        const own = overigAlone
+          ? overigAlone.taxForYear({
+              year,
+              jan1: { equity: 0, vastrentend: 0, overig: jan1.overig, debt: 0 },
+              result: { equity: 0, vastrentend: 0, overig: overigNext - jan1.overig },
+              debtInterest: 0,
+              final,
+              equityDeposits: 0,
+              equitySale: null,
+              kwijtschelding: 0,
+            }).tax
+          : 0;
+        // Negative when the strategy lowers the household tax (the DUO debt shields the overig vermogen).
+        const tax = y.tax - own;
+        box3Tax = tax;
         realisationTax = y.realisationTax;
-        totalTaxNominal += y.tax;
-        totalTaxReal += toEurosVanNu(y.tax, i + 1, p.inflation);
-        // Pay from the pots pro rata; the rest comes from the next months' money.
+        totalTaxNominal += tax;
+        totalTaxReal += toEurosVanNu(tax, i + 1, p.inflation);
+        // Pay from the pots pro rata; the rest comes from the next months' money (a negative tax
+        // is a saving that flows into the next months' money the same way).
         const pot = equityPot + vastrentendPot;
-        const fromPot = Math.min(y.tax, pot);
+        const fromPot = Math.max(0, Math.min(tax, pot));
         equitySale = null;
         if (fromPot > 0) {
           const keep = (pot - fromPot) / pot;
@@ -321,7 +345,7 @@ function run(
           equityPot *= keep;
           vastrentendPot *= keep;
         }
-        taxArrears += y.tax - fromPot;
+        taxArrears += tax - fromPot;
         jan1 = { equity: equityPot, vastrentend: vastrentendPot, overig: overigNext, debt: loan.balance };
         equityDeposits = 0;
         vastrentendDeposits = 0;

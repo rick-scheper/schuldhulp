@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, type Box3Settings, type ComparedOutcome, type StrategyKind } from '../engine';
 import { formatEuro, formatMonthLong } from './format';
+import type { Unit } from './DuelResult';
 
 const NAMES: Record<StrategyKind, string> = {
   aflossen: '100% extra aflossen',
@@ -15,26 +15,21 @@ function mixLabel(o: ComparedOutcome): string {
   return `${a}% aflossen, belegd deel ${e}% aandelen`;
 }
 
-export function StrategyResult({ outcomes, box3 }: { outcomes: ComparedOutcome[]; box3: Box3Settings }) {
+/**
+ * The fixed-return explainer (#20, #23, #24), folded under the duel since #26: one expected
+ * rentepad and constant returns, every strategy in a table. Follows the header's unit toggle.
+ */
+export function StrategyResult({ outcomes, box3, unit }: { outcomes: ComparedOutcome[]; box3: Box3Settings; unit: Unit }) {
   const forfaitBlijft = box3.regimePath === 'forfait-blijft';
-  const [unit, setUnit] = useState<'real' | 'nominal'>('real');
   const real = unit === 'real';
 
   return (
-    <section className="card result" aria-label="Strategieën">
-      <div className="result-head">
-        <h2>Eindvermogen per strategie</h2>
-        <div className="toggle" role="radiogroup" aria-label="Eenheid">
-          <label>
-            <input type="radio" name="unit" checked={real} onChange={() => setUnit('real')} /> Euro's van nu
-          </label>
-          <label>
-            <input type="radio" name="unit" checked={!real} onChange={() => setUnit('nominal')} /> Nominaal
-          </label>
-        </div>
-      </div>
+    <details className="card result fold">
+      <summary>Rekenvoorbeeld met vaste rendementen</summary>
+      <section aria-label="Strategieën">
       <p className="hint">
-        Wat je pot waard is aan het eind van je terugbetaalfase, na box 3-belasting, met vaste rendementen.
+        Eén verwacht verloop van de rente en vaste rendementen, zonder spreiding: zo zie je hoe de berekening werkt.
+        Wat je pot waard is aan het eind van je terugbetaalfase, na box 3-belasting.
         {real ? " In euro's van nu: gecorrigeerd voor inflatie." : ' Nominaal: niet gecorrigeerd voor inflatie.'}
       </p>
       <div className="table-wrap">
@@ -107,7 +102,9 @@ export function StrategyResult({ outcomes, box3 }: { outcomes: ComparedOutcome[]
               : 'Kwijtschelding telt als vermogenswinst in het jaar dat je schuld vervalt.'}
           </>
         )}{' '}
-        De belasting gaat aan het eind van elk jaar van je pot af, of van je surplus als je pot leeg is. Je rekent als
+        De belasting gaat aan het eind van elk jaar van je pot af, of van je surplus als je pot leeg is. Heb je overig
+        box 3-vermogen, dan telt alleen de belasting die je strategie daar bovenop veroorzaakt; wat dat vermogen zelf
+        kost, is voor elke strategie gelijk. Je rekent als
         alleenstaande, zonder fiscale partner.
         {forfaitBlijft && ' Kwijtschelding is onbelast.'} Een prestatiebeurs die nog een gift kan worden, telt niet als
         schuld; vul je studieschuld dan zonder dat deel in als je dat wilt meenemen.
@@ -116,6 +113,7 @@ export function StrategyResult({ outcomes, box3 }: { outcomes: ComparedOutcome[]
         Aandelen rekenen hier met een vast rendement na fondskosten en 0,15% dividendlek (bronbelasting op dividend die
         een indexfonds niet terugkrijgt). In werkelijkheid schommelt het rendement sterk.
       </p>
-    </section>
+      </section>
+    </details>
   );
 }

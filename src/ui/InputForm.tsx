@@ -22,7 +22,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
   };
 
   return (
-    <form className="card form-sections" onSubmit={(e) => e.preventDefault()}>
+    <form id="invoer" className="card form-sections" onSubmit={(e) => e.preventDefault()}>
       <div className="form">
         <label className="field">
           <span className="field-label">Huidige studieschuld</span>
@@ -80,7 +80,8 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             Optioneel: je spaargeld en beleggingen buiten je strategie, bijvoorbeeld spaargeld dat je niet als inleg
             gebruikt. Telt als banktegoed en blijft in euro's van nu gelijk. Het gebruikt een deel van je heffingsvrij
             vermogen ({formatEuro(BOX3_FORFAIT_PARAMS.heffingsvrijVermogen).replace(/,00$/, '')} in {BOX3_FORFAIT_PARAMS.year}), zodat je
-            strategie eerder box 3-belasting betaalt.
+            strategie eerder box 3-belasting betaalt. De belasting die dit vermogen zelf kost, is voor elke strategie
+            gelijk en telt niet mee in de vergelijking.
           </span>
         </label>
 
@@ -279,6 +280,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field checkbox">
             <span>
               <input
+                id="switch-forfait-blijft"
                 type="checkbox"
                 checked={draft.forfaitBlijft}
                 onChange={(e) => onChange({ ...draft, forfaitBlijft: e.target.checked })}
@@ -294,6 +296,7 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
           <label className="field checkbox">
             <span>
               <input
+                id="switch-kwijtschelding-belast"
                 type="checkbox"
                 checked={draft.kwijtscheldingBelast}
                 disabled={draft.forfaitBlijft}

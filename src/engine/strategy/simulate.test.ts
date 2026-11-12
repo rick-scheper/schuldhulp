@@ -377,17 +377,38 @@ describe('box 3 forfait + tegenbewijs (#23), with "huidig forfait blijft gelden"
       expect(withOverig.eindvermogenNominal).toBeLessThan(without.eindvermogenNominal);
     });
 
-    it('when the pot is empty, the tax comes from the surplus, and every strategy still spends the same cash', () => {
+    it('charges the strategy only the tax above what the overig vermogen costs on its own (#26)', () => {
+      // No debt and no money to allocate: the strategy owns nothing, so it pays no box 3 tax,
+      // although the overig vermogen alone is taxed every year.
+      const idle: PlanInput = { ...plan, debt: 0, surplus: 0, box3: { ...box3, overigVermogen: 300_000 } };
+      const r = simulateStrategy(idle, AANDELEN_STRATEGY, market, { trace: true });
+      expect(r.box3Years!.some((y) => y.tax > 0)).toBe(true);
+      expect(r.box3TaxNominal).toBe(0);
+      expect(r.eindvermogenNominal).toBe(0);
+    });
+
+    it('a strategy that lowers the household tax gets the saving as money to allocate, and still spends the same cash', () => {
+      // The DUO debt shields part of the overig vermogen: while aflossen, the household pays less
+      // than the overig vermogen alone would, and that saving flows into the next months' money.
       const big: PlanInput = { ...plan, box3: { ...box3, overigVermogen: 300_000 } };
       const r = simulateStrategy(big, aflossenStrategy(), market, { trace: true });
       const ref = buildDuoSchedule(plan).months;
-      // while aflossen the pot is empty, so the first taxed year is paid from January's money
-      const firstTax = r.trace!.findIndex((m) => m.box3Tax > 0);
-      expect(r.trace![firstTax]!.equityPot).toBe(0);
-      expect(r.trace![firstTax + 1]!.taxFromSurplus).toBeGreaterThan(0);
+      const first = r.trace!.findIndex((m) => m.box3Tax !== 0);
+      expect(r.trace![first]!.box3Tax).toBeLessThan(0);
+      expect(r.trace![first + 1]!.taxFromSurplus).toBeLessThan(0);
       r.trace!.forEach((m, i) => {
         expect(m.termijnPaid + m.extraAflossen + m.invested + m.taxFromSurplus).toBeCloseTo(ref[i]!.payment + 200, 6);
       });
+    });
+
+    it('the overig vermogen\'s own tax no longer weighs on the score: only its interaction with the strategy does', () => {
+      // Under werkelijk rendement a large overig vermogen uses up the heffingsvrij resultaat: beyond
+      // that point more overig vermogen changes (almost: only the two forfait years differ) nothing for the strategies.
+      const at = (overigVermogen: number) =>
+        compareStrategies({ ...plan, surplus: 300, box3: { ...box3, regimePath: 'werkelijk-vanaf-2029', overigVermogen } }, standardStrategies({ mixAflossenShare: 0.5, mixEquityShare: 0.5 }), market);
+      const a = at(200_000);
+      const b = at(400_000);
+      a.forEach((o, k) => expect(Math.abs(o.eindvermogenNominal / b[k]!.eindvermogenNominal - 1)).toBeLessThan(0.002));
     });
   });
 
