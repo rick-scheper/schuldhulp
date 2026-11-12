@@ -242,3 +242,17 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .mortgage-figures .sub { padding-left: 12px; font-size: 0.85rem; }
 .mortgage-diff { font-size: 1.05rem; margin: 16px 0 8px; }
 .mortgage p { overflow-wrap: anywhere; }
+
+/* Persistence + share link (#31) */
+.btn { font: inherit; font-size: 0.9rem; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+.btn.link { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; }
+.button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.shared-banner { border-color: var(--accent); }
+.shared-banner p { margin: 0 0 12px; font-weight: 600; }
+.share-panel { display: flex; flex-direction: column; gap: 8px; }
+.share-panel .hint { margin: 0; }
+.share-link input { width: 100%; min-width: 0; box-sizing: border-box; }
+.link-notice { margin: 0; }

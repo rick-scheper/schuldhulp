@@ -6,6 +6,11 @@ import { createMonteCarloClient, type MonteCarloClient, type WorkerLike } from '
 import { handleRequest, type WorkerRequest, type WorkerResponse } from '../worker/protocol';
 
 afterEach(cleanup);
+// The app auto-saves (#31): every test starts without saved inputs or a share link.
+beforeEach(() => {
+  localStorage.clear();
+  window.history.replaceState(null, '', '/');
+});
 
 describe('App', () => {
   it('asks for the three required inputs and shows nothing computed yet', () => {

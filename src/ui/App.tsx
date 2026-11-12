@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   breakEvenCurve,
   buildDuoSchedule,
@@ -14,7 +14,7 @@ import { ScheduleResult } from './ScheduleResult';
 import { DuelResult, type Unit } from './DuelResult';
 import { ResultsHeader } from './ResultsHeader';
 import { StrategyResult } from './StrategyResult';
-import { EMPTY_DRAFT, monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
+import { monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
 import { useMonteCarlo } from './useMonteCarlo';
 import { RangeStrips } from './RangeStrips';
 import { BreakEvenChart } from './BreakEvenChart';
@@ -24,7 +24,9 @@ import { box3StatusKort, rekenregelsStamp } from './rekenregels';
 import { BOX3_WERKELIJK } from '../engine';
 import { buildDuel } from './duel';
 import { MortgageNote } from './MortgageNote';
-import { HYPOTHEEK_JAREN_DEFAULT } from './mortgage';
+import { DEFAULT_SAVED_STATE, encodeState } from './share';
+import { shareUrl, useSavedState } from './useSavedState';
+import { LinkNotice, SharePanel, SharedBanner } from './SharePanel';
 import { createBrowserMonteCarloClient, type MonteCarloClient } from '../worker/client';
 
 function currentMonth(): YearMonth {
@@ -35,6 +37,7 @@ function currentMonth(): YearMonth {
 interface Props {
   /** Injected in tests; defaults to the current calendar month. */
   today?: YearMonth;
+  /** Tests: start from this draft instead of the saved inputs or a share link. */
   initialDraft?: InputDraft;
   /** Runs the Monte Carlo; defaults to the Web Worker pool. Null: no Monte Carlo (e.g. no workers). */
   monteCarlo?: MonteCarloClient | null;
@@ -46,15 +49,17 @@ function defaultClient(): MonteCarloClient | null {
   return browserClient;
 }
 
-export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteCarlo }: Props) {
+export function App({ today = currentMonth(), initialDraft, monteCarlo }: Props) {
   const client = useMemo(() => (monteCarlo === undefined ? defaultClient() : monteCarlo), [monteCarlo]);
-  const [draft, setDraft] = useState(initialDraft);
-  // Results state the later tickets hook into: #27 sets the challenger from the range strips,
-  // #28 (the fan chart) follows it, #31 persists both. Null challenger = the strategy with the best median.
-  const [unit, setUnit] = useState<Unit>('real');
-  const [challenger, setChallenger] = useState<StrategyKind | null>(null);
-  // The hypotheekmoment of the mortgage note (#13, #30), in years from now; #31 persists it.
-  const [hypotheekJaren, setHypotheekJaren] = useState(HYPOTHEEK_JAREN_DEFAULT);
+  // The inputs plus the results state worth keeping (#31): challenger (null = the strategy with the
+  // best median), unit and hypotheekmoment. Auto-saved; opened from a share link.
+  const session = useSavedState(initialDraft ? { ...DEFAULT_SAVED_STATE, draft: initialDraft } : undefined);
+  const { draft, challenger, unit, hypotheekJaren } = session.state;
+  const { update } = session;
+  const setDraft = (d: InputDraft) => update({ draft: d });
+  const setUnit = (u: Unit) => update({ unit: u });
+  const setChallenger = (c: StrategyKind | null) => update({ challenger: c });
+  const setHypotheekJaren = (j: number) => update({ hypotheekJaren: j });
   const inputs = parseInputs(draft);
   const rate = inputs && resolveRate(inputs, today);
   const plan = inputs && rate?.ok ? { ...inputs, today, annualRate: rate.annualRate, rentepad: rate.rentepad } : null;
@@ -88,7 +93,14 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
         <h1>Schuldhulp</h1>
         <p className="lede">Extra aflossen op je studieschuld of beleggen? Begin met wat DUO nu van je vraagt.</p>
       </header>
+      {session.shared && <SharedBanner onAdopt={session.adopt} onBack={session.back} />}
+      {session.notice && <LinkNotice onDismiss={session.dismissNotice} />}
       <InputForm draft={draft} onChange={setDraft} rateInfo={rateInfo(draft, today)} />
+      <SharePanel
+        key={encodeState(session.state)}
+        makeUrl={() => shareUrl(session.state)}
+        onReset={session.shared ? null : session.reset}
+      />
       {schedule && outcomes && inputs && rate?.ok ? (
         <>
           <ResultsHeader inputs={inputs} unit={unit} onUnitChange={setUnit} />
