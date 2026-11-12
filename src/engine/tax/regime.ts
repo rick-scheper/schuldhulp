@@ -116,6 +116,38 @@ export function indexAmount(amount: number, fromYear: number, year: number, infl
   return Math.round(amount * Math.pow(1 + inflation, Math.max(0, year - fromYear)));
 }
 
+/**
+ * Memo of the indexed parameters per (params, inflation, year): the Monte Carlo asks for the same
+ * few dozen years millions of times (#25). Keyed weakly on the params object.
+ */
+function memoByYear<P extends object, R>(compute: (p: P, year: number, inflation: number) => R) {
+  const cache = new WeakMap<P, Map<number, Map<number, R>>>();
+  return (p: P, year: number, inflation: number): R => {
+    let byInflation = cache.get(p);
+    if (!byInflation) cache.set(p, (byInflation = new Map()));
+    let byYear = byInflation.get(inflation);
+    if (!byYear) byInflation.set(inflation, (byYear = new Map()));
+    let r = byYear.get(year);
+    if (r === undefined) byYear.set(year, (r = compute(p, year, inflation)));
+    return r;
+  };
+}
+
+/** The forfait parameters for `year`: the heffingsvrij vermogen and the schuldendrempel indexed. */
+const forfaitYearParams = memoByYear(
+  (p: Box3ForfaitParams, year: number, inflation: number): Readonly<Box3ForfaitParams> => ({
+    ...p,
+    heffingsvrijVermogen: indexAmount(p.heffingsvrijVermogen, p.year, year, inflation),
+    schuldendrempel: indexAmount(p.schuldendrempel, p.year, year, inflation),
+  }),
+);
+
+/** The werkelijk-rendement parameters for `year`: the heffingsvrij resultaat indexed from the start year. */
+const werkelijkYearParams = memoByYear((p: Box3WerkelijkParams, year: number, inflation: number) => ({
+  rate: p.rate,
+  heffingsvrijResultaat: indexAmount(p.heffingsvrijResultaat, p.startYear, year, inflation),
+}));
+
 /** Holdings per category: equities are overige bezittingen; vastrentend follows the product type. */
 export function box3Holdings(jan1: Box3Year['jan1'], product: VastrentendProduct): Box3Holdings {
   const deposito = product === 'deposito';
@@ -134,11 +166,7 @@ export function createForfaitRegime(settings: Box3Settings, inflation: number): 
   const p = settings.params ?? BOX3_FORFAIT_PARAMS;
   return {
     taxForYear(y) {
-      const yearParams = {
-        ...p,
-        heffingsvrijVermogen: indexAmount(p.heffingsvrijVermogen, p.year, y.year, inflation),
-        schuldendrempel: indexAmount(p.schuldendrempel, p.year, y.year, inflation),
-      };
+      const yearParams = forfaitYearParams(p, y.year, inflation);
       const actual = y.result.equity + y.result.vastrentend + y.result.overig - y.debtInterest;
       const detail = tegenbewijsBox3(box3Holdings(y.jan1, settings.vastrentendProduct), actual, yearParams);
       return { year: y.year, regime: 'forfait', tax: detail.tax, realisationTax: 0, detail };
@@ -175,22 +203,17 @@ export function createWerkelijkRegime(settings: Box3Settings, inflation: number)
       costBasis += y.equityDeposits ?? 0;
       const equityValue = y.jan1.equity + (y.equityDeposits ?? 0) + y.result.equity;
       const kwijtschelding = taxKwijtschelding ? (y.kwijtschelding ?? 0) : 0;
-      const yearParams = {
-        rate: p.rate,
-        heffingsvrijResultaat: indexAmount(p.heffingsvrijResultaat, p.startYear, y.year, inflation),
-      };
-      const base = {
+      const yearParams = werkelijkYearParams(p, y.year, inflation);
+      // Plain literals, not spreads: this runs millions of times in the Monte Carlo (#25).
+      const result = (realised: number) => ({
+        realisedEquity: realised,
         vastrentend: y.result.vastrentend,
         overig: y.result.overig,
         debtInterest: y.debtInterest,
         kwijtschelding,
-      };
-      const held = werkelijkRendementBox3({ ...base, realisedEquity }, verlies, yearParams);
-      const sold = werkelijkRendementBox3(
-        { ...base, realisedEquity: realisedEquity + equityValue - costBasis },
-        verlies,
-        yearParams,
-      );
+      });
+      const held = werkelijkRendementBox3(result(realisedEquity), verlies, yearParams);
+      const sold = werkelijkRendementBox3(result(realisedEquity + equityValue - costBasis), verlies, yearParams);
       const taxed = y.final ? sold : held;
       verlies = taxed.verliesNaar;
       return {

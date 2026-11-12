@@ -8,6 +8,8 @@ import {
   DEFAULT_KWIJTSCHELDING_BELAST,
   DEFAULT_VASTRENTEND_PRODUCT,
   DEFAULT_VASTRENTEND_RATE,
+  DEFAULT_VASICEK,
+  DEFAULT_SCENARIO_MODEL,
   EQUITY_INDICES,
   addMonths,
   buildRentepad,
@@ -17,6 +19,8 @@ import {
   parseYearMonth,
   SF35_TERM_MONTHS,
   type Box3Settings,
+  type MonteCarloInput,
+  type Strategy,
   type RatePeriod,
   type RatePeriodKind,
   type EquityIndex,
@@ -54,6 +58,8 @@ export interface InputDraft {
   incomeGrowthPct: string;
   /** "Rente blijft gelijk": every rentevaste periode keeps the current rate. */
   constantRate: boolean;
+  /** "Verwachte langetermijnrente": θ of the 5-year yield model (#5). */
+  thetaPct: string;
   indexSurplus: boolean;
   freedUpDestination: FreedUpDestination;
   /** Box 3 category of the vastrentend pot. */
@@ -91,6 +97,7 @@ export const EMPTY_DRAFT: InputDraft = {
   inflationPct: pct(DEFAULT_INFLATION),
   incomeGrowthPct: pct(DEFAULT_INCOME_GROWTH),
   constantRate: false,
+  thetaPct: pct(DEFAULT_VASICEK.theta),
   indexSurplus: true,
   freedUpDestination: 'aandelen',
   vastrentendProduct: DEFAULT_VASTRENTEND_PRODUCT,
@@ -107,6 +114,8 @@ export interface ParsedInputs {
   /** Null = derived from the start of the aanloopfase. */
   currentPeriodEndYear: number | null;
   constantRate: boolean;
+  /** θ: the long-term level the 5-year yield reverts to (fraction). */
+  theta: number;
   inleg: number;
   /** Null when no income was entered: no draagkracht cap. */
   income: IncomePath | null;
@@ -140,6 +149,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
   const inflation = parsePct(d.inflationPct, 20);
   const income = d.income.trim() === '' ? undefined : parseDutchNumber(d.income);
   const incomeGrowth = parsePct(d.incomeGrowthPct, 20);
+  const theta = parsePct(d.thetaPct, 20);
   if (
     debt === null ||
     repaymentStart === null ||
@@ -153,7 +163,8 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     ter === null ||
     inflation === null ||
     income === null ||
-    incomeGrowth === null
+    incomeGrowth === null ||
+    theta === null
   ) {
     return null;
   }
@@ -164,6 +175,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     currentRate: currentRate ?? null,
     currentPeriodEndYear: currentPeriodEndYear ?? null,
     constantRate: d.constantRate,
+    theta,
     inleg,
     income: income === undefined ? null : { income, growth: incomeGrowth },
     inflation,
@@ -202,7 +214,9 @@ export function rateInfo(d: InputDraft, today: YearMonth): RateInfo | null {
     currentPeriodEndYear = null; // resolveRate reports the invalid year
   }
   const period = currentRatePeriod({ today, repaymentStart, currentPeriodEndYear });
-  const rate = defaultCurrentRate({ today, repaymentStart, currentPeriodEndYear, yields: expectedYieldSeries(today) });
+  const theta = parsePct(d.thetaPct, 20) ?? DEFAULT_VASICEK.theta;
+  const yields = expectedYieldSeries(today, { ...DEFAULT_VASICEK, theta });
+  const rate = defaultCurrentRate({ today, repaymentStart, currentPeriodEndYear, yields });
   return { ...period, defaultRatePct: rate === null ? null : pct(rate, 2) };
 }
 
@@ -223,7 +237,7 @@ export function resolveRate(inputs: ParsedInputs, today: YearMonth): RateResolut
       currentRate: inputs.currentRate,
       currentPeriodEndYear: inputs.currentPeriodEndYear,
       constant: inputs.constantRate,
-      yields: expectedYieldSeries({ year: end.year, month: 12 }),
+      yields: expectedYieldSeries({ year: end.year, month: 12 }, { ...DEFAULT_VASICEK, theta: inputs.theta }),
     });
     return { ok: true, annualRate: pad.rates[0] ?? pad.periods[0]!.rate, rentepad: pad.rates, periods: pad.periods };
   } catch (e) {
@@ -232,4 +246,28 @@ export function resolveRate(inputs: ParsedInputs, today: YearMonth): RateResolut
     }
     return { ok: false, message: 'Vul je huidige DUO-rente in; voor het startjaar van je rentevaste periode is geen SF35-rente bekend.' };
   }
+}
+
+/**
+ * The Monte Carlo input for the parsed inputs (#25): the same plan and strategies as the
+ * deterministic table, with the rentepad left to each toekomst and θ from Geavanceerd.
+ */
+export function monteCarloInput(inputs: ParsedInputs, today: YearMonth, strategies: Strategy[]): MonteCarloInput {
+  return {
+    plan: {
+      debt: inputs.debt,
+      repaymentStart: inputs.repaymentStart,
+      today,
+      surplus: inputs.surplus,
+      inleg: inputs.inleg,
+      inflation: inputs.inflation,
+      indexSurplus: inputs.indexSurplus,
+      income: inputs.income,
+      box3: inputs.box3,
+    },
+    rate: { currentRate: inputs.currentRate, currentPeriodEndYear: inputs.currentPeriodEndYear, constant: inputs.constantRate },
+    strategies,
+    returns: inputs.returns,
+    model: { ...DEFAULT_SCENARIO_MODEL, vasicek: { ...DEFAULT_SCENARIO_MODEL.vasicek, theta: inputs.theta } },
+  };
 }

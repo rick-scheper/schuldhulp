@@ -79,7 +79,10 @@ export interface StrategyOutcome {
   potByYear?: PotAtYearEnd[];
 }
 
-/** The pot at a calendar year end, nominal, as if it were sold then (#24, for the koopbudget). */
+/**
+ * The pot at a calendar year end, nominal, as if it were sold then (#24, for the koopbudget), with
+ * the debt side at the same moment (the per-year records of the Monte Carlo, #25).
+ */
 export interface PotAtYearEnd {
   year: number;
   /** Month the year ends on the grid (December, or the last month of the term). */
@@ -96,6 +99,10 @@ export interface PotAtYearEnd {
   realisationTax: number;
   /** What the user would keep after selling: pot − tax arrears − realisation tax (not yet paid). */
   afterTax: number;
+  /** The DUO debt at the same moment (after the month's termijn and extra aflossen). */
+  restschuld: number;
+  /** The termijn in force in that month (0 before the terugbetaalfase or once the debt is cleared). */
+  termijn: number;
 }
 
 export interface SimulateOptions {
@@ -120,9 +127,9 @@ export function toEurosVanNu(nominal: number, months: number, inflation: number)
  * extra aflossen follows. The same for every such strategy, so it needs only one run (#8).
  */
 export function referencePayments(p: PlanInput): Float64Array {
-  const zero: Market = { equityGrowth: () => 1, vastrentendGrowth: () => 1 };
   const out = new Float64Array(gridMonths(p));
-  run(p, { kind: 'vastrentend', aflossenShare: 0, equityShare: 0 }, zero, null, out);
+  const loan = createLoan(p);
+  for (let i = 0; i < out.length; i++) out[i] = loan.advance().payment;
   return out;
 }
 
@@ -158,7 +165,7 @@ export function simulateStrategy(
   options: SimulateOptions = {},
 ): StrategyOutcome {
   const ref = options.referencePayments ?? referencePayments(p);
-  return run(p, strategy, market, ref, null, options.trace ?? false, options.potByYear ?? false);
+  return run(p, strategy, market, ref, options.trace ?? false, options.potByYear ?? false);
 }
 
 /**
@@ -210,8 +217,7 @@ function run(
   p: PlanInput,
   strategy: Strategy,
   market: Market,
-  ref: Float64Array | null,
-  recordPayments: Float64Array | null,
+  ref: Float64Array,
   trace = false,
   recordPots = false,
 ): StrategyOutcome {
@@ -229,8 +235,8 @@ function run(
 
   // Box 3 bookkeeping per calendar year.
   const box3 = p.box3 ? createBox3Regime(p.box3, p.inflation) : null;
-  const overigAt = (year: number) =>
-    p.box3 ? p.box3.overigVermogen * Math.pow(1 + p.inflation, year - p.today.year) : 0;
+  const overig0 = p.box3?.overigVermogen ?? 0;
+  const overigAt = (year: number) => (overig0 === 0 ? 0 : overig0 * Math.pow(1 + p.inflation, year - p.today.year));
   let jan1: Box3Year['jan1'] = { equity: 0, vastrentend: 0, overig: overigAt(p.today.year), debt: loan.balance };
   let equityDeposits = 0;
   let vastrentendDeposits = 0;
@@ -242,18 +248,25 @@ function run(
   const box3Years: Box3YearTax[] | undefined = trace && box3 ? [] : undefined;
   const potByYear: PotAtYearEnd[] | undefined = trace || recordPots ? [] : undefined;
 
+  const todayIndex = p.today.year * 12 + p.today.month - 1;
+  let surplus = p.surplus;
+
   for (let i = 0; i < n; i++) {
     equityPot *= market.equityGrowth(i);
     vastrentendPot *= market.vastrentendGrowth(i);
+    const monthIndex = todayIndex + i;
+    const calYear = Math.floor(monthIndex / 12);
+    const yearEnd = monthIndex - calYear * 12 === 11;
 
     // Debt: interest, then the required termijn (capped by draagkracht).
-    const m = loan.step();
+    const m = loan.advance();
     const termijnPaid = m.payment;
-    if (recordPayments) recordPayments[i] = termijnPaid;
+    const termijn = m.termijn;
+    const interest = m.interest;
 
     // Allocation: every strategy spends the reference termijn + surplus (+ inleg).
-    const surplus = p.indexSurplus ? p.surplus * Math.pow(1 + p.inflation, Math.floor(i / 12)) : p.surplus;
-    const budget = (ref ? (ref[i] ?? 0) : termijnPaid) + surplus + (i === 0 ? p.inleg : 0);
+    if (p.indexSurplus && i > 0 && i % 12 === 0) surplus = p.surplus * Math.pow(1 + p.inflation, i / 12);
+    const budget = (ref[i] ?? 0) + surplus + (i === 0 ? p.inleg : 0);
     let allocatable = Math.max(0, budget - termijnPaid);
     // Box 3 tax the pots could not pay comes first.
     const taxFromSurplus = Math.min(taxArrears, allocatable);
@@ -267,7 +280,7 @@ function run(
     totalExtra += extra;
     totalInvested += invested;
 
-    if (loan.balance === 0 && debtFreeMonth === null) debtFreeMonth = m.month;
+    if (loan.balance === 0 && debtFreeMonth === null) debtFreeMonth = addMonths(p.today, i);
 
     let box3Tax = 0;
     let realisationTax = 0;
@@ -275,9 +288,9 @@ function run(
     if (box3) {
       equityDeposits += invested * strategy.equityShare;
       vastrentendDeposits += invested * (1 - strategy.equityShare);
-      debtInterest += m.interest;
-      if (m.month.month === 12 || final) {
-        const year = m.month.year;
+      debtInterest += interest;
+      if (yearEnd || final) {
+        const year = calYear;
         const overigNext = overigAt(year + 1);
         const y = box3.taxForYear({
           year,
@@ -316,21 +329,23 @@ function run(
       }
     }
 
-    if (potByYear && (m.month.month === 12 || final)) {
+    if (potByYear && (yearEnd || final)) {
       const pot = equityPot + vastrentendPot;
       potByYear.push({
-        year: m.month.year,
-        month: m.month,
+        year: calYear,
+        month: addMonths(p.today, i),
         pot,
         taxArrears,
         realisationTax,
         afterTax: pot - taxArrears - (final ? 0 : realisationTax),
+        restschuld: loan.balance,
+        termijn: termijnPaid > 0 ? termijn : 0,
       });
     }
 
     rows?.push({
-      month: m.month,
-      termijn: termijnPaid > 0 ? m.termijn : 0,
+      month: addMonths(p.today, i),
+      termijn: termijnPaid > 0 ? termijn : 0,
       termijnPaid,
       extraAflossen: extra,
       invested,

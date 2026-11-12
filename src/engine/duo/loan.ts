@@ -87,6 +87,19 @@ export interface LoanMonth {
 }
 
 /**
+ * One month of the loan without the calendar and recalculation details: what the hot loop of
+ * the strategy simulation needs. `advance()` returns the same object every month (overwritten).
+ */
+export interface LoanStep {
+  /** Grid month index (0 = today). */
+  index: number;
+  interest: number;
+  /** See LoanMonth.termijn. */
+  termijn: number;
+  payment: number;
+}
+
+/**
  * The debt side of one DUO loan, one month at a time on the grid from `today`.
  * Mutable on purpose (it is the inner loop of the Monte Carlo), but deterministic and free of I/O.
  *
@@ -97,6 +110,11 @@ export interface LoanMonth {
 export interface Loan {
   readonly balance: number;
   step(): LoanMonth;
+  /**
+   * The same month as `step()`, without allocating: for the Monte Carlo (#25). Returns a shared
+   * object that the next call overwrites. Use either `step` or `advance` on one loan.
+   */
+  advance(): LoanStep;
   /** Pays up to `amount` extra off the debt; returns what was actually paid. */
   extraAflossen(amount: number): number;
 }
@@ -107,21 +125,19 @@ export function createLoan(terms: LoanTerms): Loan {
   const income = terms.income ?? null;
   const firstOffset = monthsBetween(terms.repaymentStart, terms.today); // < 0 in the aanloopfase
   const firstRepaymentOffset = Math.max(0, firstOffset);
+  const todayIndex = terms.today.year * 12 + terms.today.month - 1;
+  const baseYear = terms.today.year;
 
   // The rate seam: the scenario's rentepad (annual rate per grid month), or one constant rate.
-  const pad = terms.rentepad ?? null;
-  const annualAt = (i: number): number =>
-    pad && pad.length > 0 ? (pad[Math.min(i, pad.length - 1)] ?? terms.annualRate) : terms.annualRate;
+  const pad = terms.rentepad && terms.rentepad.length > 0 ? terms.rentepad : null;
+  const padLast = pad ? pad.length - 1 : 0;
   let cachedAnnual = NaN;
   let cachedMonthly = 0;
-  const rateAt = (annual: number): number => {
-    if (annual !== cachedAnnual) {
-      cachedAnnual = annual;
-      cachedMonthly = monthlyRate(annual);
-    }
-    return cachedMonthly;
-  };
   let previousAnnual: number | null = null;
+
+  // Draagkracht changes once a calendar year.
+  let draagkrachtYear = NaN;
+  let draagkrachtCap = 0;
 
   let i = 0;
   let balance = terms.debt;
@@ -130,73 +146,123 @@ export function createLoan(terms: LoanTerms): Loan {
   /** Calendar year of the last draagkracht-capped payment. */
   let lastCappedYear: number | null = null;
 
+  // The month just computed, for `step()` to report.
+  const out: LoanStep = { index: 0, interest: 0, termijn: 0, payment: 0 };
+  let outOffset = 0;
+  let outWettelijk = 0;
+  let outDraagkracht: number | null = null;
+  let outCapped = false;
+  let outKind: RecalculationKind | null = null;
+  let outRemaining = 0;
+  let outDebt = 0;
+
+  function advance(): LoanStep {
+    const offset = firstOffset + i;
+    const monthIndex = todayIndex + i;
+    const year = Math.floor(monthIndex / 12);
+    const calMonth = monthIndex - year * 12 + 1;
+    const annual = pad ? (pad[i < padLast ? i : padLast] ?? terms.annualRate) : terms.annualRate;
+    out.index = i;
+    i++;
+    const rateChanged = previousAnnual !== null && annual !== previousAnnual;
+    previousAnnual = annual;
+    if (annual !== cachedAnnual) {
+      cachedAnnual = annual;
+      cachedMonthly = monthlyRate(annual);
+    }
+    const rate = cachedMonthly;
+    outOffset = offset;
+    outKind = null;
+    outCapped = false;
+    outDraagkracht = null;
+    outWettelijk = 0;
+
+    if (balance <= 0) {
+      out.interest = 0;
+      out.termijn = 0;
+      out.payment = 0;
+      return out;
+    }
+    const interest = balance * rate;
+    out.interest = interest;
+    if (offset < 0) {
+      balance += interest;
+      out.termijn = 0;
+      out.payment = 0;
+      return out;
+    }
+
+    const repaymentYear = Math.floor(offset / 12) + 1;
+    const kind: RecalculationKind | null =
+      offset % 12 === 0 && isRecalculationYear(repaymentYear)
+        ? 'statutory'
+        : offset === firstRepaymentOffset
+          ? 'start'
+          : calMonth === 1 && lastCappedYear === year - 1
+            ? 'draagkracht'
+            : rateChanged
+              ? 'rente'
+              : extraPending
+                ? 'extra'
+                : null;
+    if (kind) {
+      outRemaining = termMonths - offset;
+      outDebt = balance;
+      wettelijk = annuityPayment(balance, rate, outRemaining);
+      outKind = kind;
+      extraPending = false;
+    }
+
+    const owed = balance + interest;
+    let draagkracht: number | null = null;
+    if (income) {
+      if (year !== draagkrachtYear) {
+        draagkrachtYear = year;
+        draagkrachtCap = draagkrachtPerMonth(year, income, baseYear, rules);
+      }
+      draagkracht = draagkrachtCap;
+    }
+    const termijn = draagkracht === null ? wettelijk : Math.min(wettelijk, draagkracht);
+    const payment = Math.min(termijn, owed);
+    const capped = draagkracht !== null && draagkracht < Math.min(wettelijk, owed);
+    if (capped) lastCappedYear = year;
+
+    outWettelijk = wettelijk;
+    outDraagkracht = draagkracht;
+    outCapped = capped;
+    balance = owed - payment;
+    if (balance < EPSILON) balance = 0;
+    if (balance === 0) wettelijk = 0;
+    out.termijn = termijn;
+    out.payment = payment;
+    return out;
+  }
+
   return {
     get balance() {
       return balance;
     },
 
+    advance,
+
     step(): LoanMonth {
-      const offset = firstOffset + i;
-      const month = addMonths(terms.today, i);
-      const annual = annualAt(i);
-      i++;
-      const rateChanged = previousAnnual !== null && annual !== previousAnnual;
-      previousAnnual = annual;
-      const rate = rateAt(annual);
+      const r = advance();
+      const month = addMonths(terms.today, r.index);
+      const offset = outOffset;
       const repaymentYear = offset >= 0 ? Math.floor(offset / 12) + 1 : 0;
-      const empty = { month, offset, repaymentYear, recalculation: null, capped: false };
-
-      if (balance <= 0) {
-        return { ...empty, interest: 0, wettelijkMaandbedrag: 0, draagkracht: null, termijn: 0, payment: 0, balanceAfter: 0 };
-      }
-      const interest = balance * rate;
-      if (offset < 0) {
-        balance += interest;
-        return { ...empty, interest, wettelijkMaandbedrag: 0, draagkracht: null, termijn: 0, payment: 0, balanceAfter: balance };
-      }
-
-      let recalculation: Recalculation | null = null;
-      const kind: RecalculationKind | null =
-        offset % 12 === 0 && isRecalculationYear(repaymentYear)
-          ? 'statutory'
-          : offset === firstRepaymentOffset
-            ? 'start'
-            : month.month === 1 && lastCappedYear === month.year - 1
-              ? 'draagkracht'
-              : rateChanged
-                ? 'rente'
-                : extraPending
-                  ? 'extra'
-                  : null;
-      if (kind) {
-        const remainingMonths = termMonths - offset;
-        wettelijk = annuityPayment(balance, rate, remainingMonths);
-        recalculation = { month, repaymentYear, kind, remainingMonths, debt: balance, wettelijkMaandbedrag: wettelijk };
-        extraPending = false;
-      }
-
-      const owed = balance + interest;
-      const draagkracht = income ? draagkrachtPerMonth(month.year, income, terms.today.year, rules) : null;
-      const termijn = draagkracht === null ? wettelijk : Math.min(wettelijk, draagkracht);
-      const payment = Math.min(termijn, owed);
-      const capped = draagkracht !== null && draagkracht < Math.min(wettelijk, owed);
-      if (capped) lastCappedYear = month.year;
-
-      const wettelijkMaandbedrag = wettelijk;
-      balance = owed - payment;
-      if (balance < EPSILON) balance = 0;
-      if (balance === 0) wettelijk = 0;
-
+      const recalculation: Recalculation | null = outKind
+        ? { month, repaymentYear, kind: outKind, remainingMonths: outRemaining, debt: outDebt, wettelijkMaandbedrag: outWettelijk }
+        : null;
       return {
         month,
         offset,
         repaymentYear,
-        interest,
-        wettelijkMaandbedrag,
-        draagkracht,
-        termijn,
-        payment,
-        capped,
+        interest: r.interest,
+        wettelijkMaandbedrag: outWettelijk,
+        draagkracht: outDraagkracht,
+        termijn: r.termijn,
+        payment: r.payment,
+        capped: outCapped,
         recalculation,
         balanceAfter: balance,
       };

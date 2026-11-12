@@ -6,3 +6,4 @@ export { createLoan, gridMonths, type Loan, type LoanMonth, type LoanTerms } fro
 export * from './strategy';
 export * from './rate';
 export * from './tax';
+export * from './montecarlo';

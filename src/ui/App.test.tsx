@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from './App';
-import { ym } from '../engine';
+import { ym, type MonteCarloInput } from '../engine';
+import { createMonteCarloClient, type MonteCarloClient, type WorkerLike } from '../worker/client';
+import { handleRequest, type WorkerRequest, type WorkerResponse } from '../worker/protocol';
 
 afterEach(cleanup);
 
@@ -259,6 +261,84 @@ describe('App', () => {
       fireEvent.click(toggle);
       expect(periodRows().every((r) => r[1] === '2,57%')).toBe(true);
       expect(screen.getByTestId('total-paid').textContent).not.toBe(moving);
+    });
+  });
+
+  describe('Monte Carlo (#25)', () => {
+    /** The real client over in-process stand-ins for the workers, with a small N to keep the test fast. */
+    function testClient(seen: MonteCarloInput[]): MonteCarloClient {
+      const worker = (): WorkerLike => {
+        const w: WorkerLike = {
+          onmessage: null,
+          postMessage(message: WorkerRequest) {
+            const { response } = handleRequest(message);
+            setTimeout(() => w.onmessage?.({ data: response } as MessageEvent<WorkerResponse>), 0);
+          },
+          terminate() {},
+        };
+        return w;
+      };
+      const client = createMonteCarloClient(worker, 2);
+      return {
+        run: (input) => {
+          seen.push(input);
+          return client.run({ ...input, n: 40 });
+        },
+        dispose: client.dispose,
+      };
+    }
+    const fill = (seen: MonteCarloInput[]) => {
+      render(<App today={ym(2027, 1)} monteCarlo={testClient(seen)} />);
+      fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: '30.000' } });
+      fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+      fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: '200' } });
+    };
+    const euros = (id: string) => Number(screen.getByTestId(id).textContent!.replace(/[^\d,]/g, '').replace(',', '.'));
+
+    it('shows the doorsnee uitkomst and P10–P90 per strategy once the worker is done', async () => {
+      const seen: MonteCarloInput[] = [];
+      fill(seen);
+      await waitFor(() => expect(screen.getByTestId('spread')).toBeTruthy());
+      for (const kind of ['aflossen', 'vastrentend', 'aandelen', 'mix']) {
+        const cells = within(screen.getByTestId(`spread-${kind}`)).getAllByRole('cell').map((c) => c.textContent);
+        expect(cells).toHaveLength(5);
+        expect(euros(`median-${kind}`)).toBeGreaterThan(0);
+      }
+      expect(screen.getByRole('region', { name: 'Spreiding' }).textContent).toMatch(/toekomsten/);
+      expect(screen.queryByTestId('mc-running')).toBeNull();
+    });
+
+    it('offers the verwachte langetermijnrente (θ) under Geavanceerd and passes it to the Monte Carlo', async () => {
+      const seen: MonteCarloInput[] = [];
+      fill(seen);
+      const theta = screen.getByLabelText(/Verwachte langetermijnrente/) as HTMLInputElement;
+      expect(theta.closest('details')?.querySelector('summary')?.textContent).toBe('Geavanceerd');
+      expect(theta.value).toBe('3,0');
+      expect(seen.at(-1)!.model!.vasicek.theta).toBe(0.03);
+      const before = screen.getByTestId('total-paid').textContent;
+      fireEvent.change(theta, { target: { value: '5' } });
+      expect(seen.at(-1)!.model!.vasicek.theta).toBe(0.05);
+      // The deterministic rentepad follows θ too.
+      expect(screen.getByTestId('total-paid').textContent).not.toBe(before);
+      await waitFor(() => expect(screen.getByTestId('spread')).toBeTruthy());
+    });
+
+    it('"rente blijft gelijk" switches the Monte Carlo to the constant-rate rentepad', async () => {
+      const seen: MonteCarloInput[] = [];
+      fill(seen);
+      expect(seen.at(-1)!.rate.constant).toBe(false);
+      fireEvent.click(screen.getByLabelText(/Rente blijft gelijk/));
+      expect(seen.at(-1)!.rate.constant).toBe(true);
+      await waitFor(() => expect(screen.getByTestId('spread')).toBeTruthy());
+    });
+
+    it('without workers the page still works, without the spreiding', () => {
+      render(<App today={ym(2027, 1)} monteCarlo={null} />);
+      fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: '30.000' } });
+      fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+      fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: '200' } });
+      expect(screen.getByTestId('termijn')).toBeTruthy();
+      expect(screen.queryByRole('region', { name: 'Spreiding' })).toBeNull();
     });
   });
 });

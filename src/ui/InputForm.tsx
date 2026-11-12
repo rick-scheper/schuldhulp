@@ -205,6 +205,19 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             </span>
           </label>
 
+          <label className="field">
+            <span className="field-label">Verwachte langetermijnrente</span>
+            <span className="input-wrap">
+              <input inputMode="decimal" value={draft.thetaPct} onChange={set('thetaPct')} disabled={draft.constantRate} />
+              <span className="affix">%</span>
+            </span>
+            <span className="hint">
+              Het niveau waar de 5-jaarsrente op staatsobligaties op lange termijn naartoe beweegt (standaard 3,0%: het
+              historische gemiddelde). Daaruit volgt de DUO-rente van elke nieuwe rentevaste periode. Elke toekomst
+              krijgt een eigen renteverloop rond die verwachting.
+            </span>
+          </label>
+
           <label className="field checkbox">
             <span>
               <input
@@ -215,8 +228,8 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
               <span className="field-label">Rente blijft gelijk</span>
             </span>
             <span className="hint">
-              Elke nieuwe rentevaste periode houdt je huidige rente. Uit: elke periode krijgt de rente die volgt uit de
-              verwachte 5-jaarsrente op staatsobligaties (nu ongeveer 3,2%, op lange termijn 3,0%).
+              Elke nieuwe rentevaste periode houdt je huidige rente, in elke toekomst. Uit: elke periode krijgt de rente
+              die volgt uit de 5-jaarsrente op staatsobligaties (nu ongeveer 3,2%) in die toekomst.
             </span>
           </label>
 
