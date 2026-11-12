@@ -1,4 +1,4 @@
-import { BOX3_FORFAIT_PARAMS, EQUITY_INDICES, type EquityIndex, type FreedUpDestination, type VastrentendProduct } from '../engine';
+import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, EQUITY_INDICES, type EquityIndex, type FreedUpDestination, type VastrentendProduct } from '../engine';
 import { formatEuro } from './format';
 import { defaultTerPct, pct, type InputDraft, type RateInfo } from './inputs';
 
@@ -258,7 +258,40 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             <span className="hint">
               Bepaalt de box 3-categorie: een deposito telt als banktegoed (fictief rendement{' '}
               {pct(BOX3_FORFAIT_PARAMS.bankReturn, 2)}%), een staatsobligatie als overige bezitting (
-              {pct(BOX3_FORFAIT_PARAMS.overigeReturn, 2)}%).
+              {pct(BOX3_FORFAIT_PARAMS.overigeReturn, 2)}%). Telt alleen in jaren met het forfait; bij werkelijk
+              rendement wordt de rente op beide elk jaar belast.
+            </span>
+          </label>
+
+          <label className="field checkbox">
+            <span>
+              <input
+                type="checkbox"
+                checked={draft.forfaitBlijft}
+                onChange={(e) => onChange({ ...draft, forfaitBlijft: e.target.checked })}
+              />{' '}
+              <span className="field-label">Huidig forfait blijft gelden</span>
+            </span>
+            <span className="hint">
+              Box 3 blijft je hele looptijd het forfait met tegenbewijs. Uit: vanaf {BOX3_WERKELIJK.startYear} belasting
+              op werkelijk rendement, zoals het wetsvoorstel (nog geen wet) plant.
+            </span>
+          </label>
+
+          <label className="field checkbox">
+            <span>
+              <input
+                type="checkbox"
+                checked={draft.kwijtscheldingBelast}
+                disabled={draft.forfaitBlijft}
+                onChange={(e) => onChange({ ...draft, kwijtscheldingBelast: e.target.checked })}
+              />{' '}
+              <span className="field-label">Kwijtschelding belast in box 3</span>
+            </span>
+            <span className="hint">
+              Bij werkelijk rendement telt de kwijtgescholden schuld waarschijnlijk als vermogenswinst in het jaar dat
+              die vervalt: ongeveer 36% belasting over dat bedrag. Nog geen wet en niet bevestigd door de Belastingdienst
+              of DUO. Onder het forfait is kwijtschelding onbelast.
             </span>
           </label>
         </div>

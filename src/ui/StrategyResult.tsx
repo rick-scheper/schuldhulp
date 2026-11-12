@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BOX3_FORFAIT_PARAMS, type ComparedOutcome, type StrategyKind } from '../engine';
+import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, type Box3Settings, type ComparedOutcome, type StrategyKind } from '../engine';
 import { formatEuro, formatMonthLong } from './format';
 
 const NAMES: Record<StrategyKind, string> = {
@@ -15,7 +15,8 @@ function mixLabel(o: ComparedOutcome): string {
   return `${a}% aflossen, belegd deel ${e}% aandelen`;
 }
 
-export function StrategyResult({ outcomes }: { outcomes: ComparedOutcome[] }) {
+export function StrategyResult({ outcomes, box3 }: { outcomes: ComparedOutcome[]; box3: Box3Settings }) {
+  const forfaitBlijft = box3.regimePath === 'forfait-blijft';
   const [unit, setUnit] = useState<'real' | 'nominal'>('real');
   const real = unit === 'real';
 
@@ -84,14 +85,32 @@ export function StrategyResult({ outcomes }: { outcomes: ComparedOutcome[] }) {
         mogelijk niet voor in aanmerking. Wat je minder aan termijn betaalt, gaat naar je strategie, zodat elke strategie
         elke maand evenveel uitgeeft.
       </p>
-      <p className="hint">
-        Box 3-belasting: het huidige forfait met tegenbewijs, elk jaar van je terugbetaalfase. Je betaalt 36% over het
-        fictieve rendement op je bezittingen op 1 januari, maar nooit meer dan 36% van je werkelijke rendement dat jaar.
-        Je hele DUO-schuld telt als schuld. De percentages blijven op het niveau van {BOX3_FORFAIT_PARAMS.year}; het
-        heffingsvrij vermogen en de schuldendrempel groeien mee met de inflatie. De belasting gaat aan het eind van elk
-        jaar van je pot af, of van je surplus als je pot leeg is. Je rekent als alleenstaande, zonder fiscale partner.
-        Kwijtschelding is onbelast. Een prestatiebeurs die nog een gift kan worden, telt niet als schuld; vul je
-        studieschuld dan zonder dat deel in als je dat wilt meenemen.
+      <p className="hint" data-testid="box3-hint">
+        Box 3-belasting:{' '}
+        {forfaitBlijft
+          ? 'het huidige forfait met tegenbewijs, elk jaar van je terugbetaalfase.'
+          : `tot en met ${BOX3_WERKELIJK.startYear - 1} het huidige forfait met tegenbewijs.`}{' '}
+        Je betaalt 36% over het fictieve rendement op je bezittingen op 1 januari, maar nooit meer dan 36% van je
+        werkelijke rendement dat jaar. Je hele DUO-schuld telt als schuld. De percentages blijven op het niveau van{' '}
+        {BOX3_FORFAIT_PARAMS.year}; het heffingsvrij vermogen en de schuldendrempel groeien mee met de inflatie.
+        {!forfaitBlijft && (
+          <>
+            {' '}
+            Vanaf {BOX3_WERKELIJK.startYear} rekent de app met werkelijk rendement, zoals het wetsvoorstel (nog geen wet)
+            plant: aandelen worden pas belast als je verkoopt, met als aankoopprijs hun waarde op 1 januari{' '}
+            {BOX3_WERKELIJK.startYear}; aan het eind van je terugbetaalfase telt je hele pot als verkocht. Rente op
+            vastrentend wordt elk jaar belast. DUO-rente, ook rente die bij je schuld wordt opgeteld, telt als negatief
+            rendement. Je betaalt 36% over wat boven het heffingsvrij resultaat ({formatEuro(BOX3_WERKELIJK.heffingsvrijResultaat).replace(/,00$/, '')}{' '}
+            in {BOX3_WERKELIJK.startYear}, groeit mee met de inflatie) uitkomt; verliezen schuif je door naar latere jaren.{' '}
+            {box3.kwijtscheldingBelast === false
+              ? 'Kwijtschelding rekent de app als onbelast.'
+              : 'Kwijtschelding telt als vermogenswinst in het jaar dat je schuld vervalt.'}
+          </>
+        )}{' '}
+        De belasting gaat aan het eind van elk jaar van je pot af, of van je surplus als je pot leeg is. Je rekent als
+        alleenstaande, zonder fiscale partner.
+        {forfaitBlijft && ' Kwijtschelding is onbelast.'} Een prestatiebeurs die nog een gift kan worden, telt niet als
+        schuld; vul je studieschuld dan zonder dat deel in als je dat wilt meenemen.
       </p>
       <p className="hint">
         Aandelen rekenen hier met een vast rendement na fondskosten en 0,15% dividendlek (bronbelasting op dividend die

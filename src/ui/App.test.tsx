@@ -147,14 +147,59 @@ describe('App', () => {
       expect(euros('eindvermogen-aandelen')).toBeLessThan(eind);
     });
 
-    it('offers the vastrentend product type under Geavanceerd: deposito by default, staatsobligatie taxed more', () => {
+    it('offers the vastrentend product type under Geavanceerd: deposito by default, staatsobligatie taxed more under the forfait', () => {
       fill();
+      fireEvent.click(screen.getByLabelText(/Huidig forfait blijft gelden/));
       const select = screen.getByLabelText(/Soort vastrentend product/) as HTMLSelectElement;
       expect(select.closest('details')?.querySelector('summary')?.textContent).toBe('Geavanceerd');
       expect(select.value).toBe('deposito');
       const deposito = euros('box3-vastrentend');
       fireEvent.change(select, { target: { value: 'staatsobligatie' } });
       expect(euros('box3-vastrentend')).toBeGreaterThan(deposito);
+    });
+  });
+
+  describe('box 3 werkelijk rendement and switches (#24)', () => {
+    const fill = (debt = '30.000', surplus = '1.000', income?: string) => {
+      render(<App today={ym(2027, 1)} />);
+      fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: debt } });
+      fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+      fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: surplus } });
+      if (income) fireEvent.change(screen.getByLabelText(/Bruto jaarinkomen/), { target: { value: income } });
+    };
+    const euros = (id: string) => Number(screen.getByTestId(id).textContent!.replace(/[^\d,]/g, '').replace(',', '.'));
+    const advanced = (el: HTMLElement) => el.closest('details')?.querySelector('summary')?.textContent;
+
+    it('uses werkelijk rendement from 2029 by default; "huidig forfait blijft gelden" switches it off', () => {
+      fill();
+      const toggle = screen.getByLabelText(/Huidig forfait blijft gelden/) as HTMLInputElement;
+      expect(advanced(toggle)).toBe('Geavanceerd');
+      expect(toggle.checked).toBe(false);
+      expect(screen.getByTestId('box3-hint').textContent).toMatch(/Vanaf 2029 rekent de app met werkelijk rendement/);
+      const werkelijk = euros('eindvermogen-aandelen');
+      fireEvent.click(toggle);
+      expect(screen.getByTestId('box3-hint').textContent).not.toMatch(/werkelijk rendement/);
+      expect(euros('eindvermogen-aandelen')).not.toBe(werkelijk);
+    });
+
+    it('taxes the kwijtschelding by default; switching it off makes it tax-free', () => {
+      fill('60.000', '300', '30.000');
+      const toggle = screen.getByLabelText(/Kwijtschelding belast in box 3/) as HTMLInputElement;
+      expect(advanced(toggle)).toBe('Geavanceerd');
+      expect(toggle.checked).toBe(true);
+      const taxed = euros('box3-vastrentend');
+      const eind = euros('eindvermogen-vastrentend');
+      fireEvent.click(toggle);
+      expect(euros('box3-vastrentend')).toBeLessThan(taxed);
+      expect(euros('eindvermogen-vastrentend')).toBeGreaterThan(eind);
+      expect(screen.getByTestId('box3-hint').textContent).toMatch(/Kwijtschelding rekent de app als onbelast/);
+    });
+
+    it('disables the kwijtschelding switch under the forfait, where it is always tax-free', () => {
+      fill();
+      fireEvent.click(screen.getByLabelText(/Huidig forfait blijft gelden/));
+      expect((screen.getByLabelText(/Kwijtschelding belast in box 3/) as HTMLInputElement).disabled).toBe(true);
+      expect(screen.getByTestId('box3-hint').textContent).toMatch(/Kwijtschelding is onbelast/);
     });
   });
 

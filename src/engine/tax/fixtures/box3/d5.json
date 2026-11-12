@@ -1,0 +1,88 @@
+{
+  "id": "d5",
+  "description": "Werkelijk rendement, end-of-term sale in 2030: realised gain over the gemiddelde verkrijgingsprijs taxed at 36%, after the indexed heffingsvrij resultaat and a carried-forward verlies",
+  "settings": {
+    "inflation": 0.02
+  },
+  "years": [
+    {
+      "input": {
+        "year": 2029,
+        "jan1": {
+          "equity": 100000,
+          "vastrentend": 0,
+          "overig": 0,
+          "debt": 18500
+        },
+        "result": {
+          "equity": 8000,
+          "vastrentend": 0,
+          "overig": 0
+        },
+        "debtInterest": 500,
+        "equityDeposits": 12000,
+        "final": false
+      },
+      "expected": {
+        "regime": "werkelijk",
+        "tax": 0,
+        "realisationTax": 2052,
+        "costBasis": 112000,
+        "taxed": {
+          "resultaat": -500,
+          "heffingsvrijResultaat": 0,
+          "inkomen": -500,
+          "verliesVerrekend": 0,
+          "belastbaarInkomen": 0,
+          "tax": 0,
+          "verliesNaar": 500
+        }
+      }
+    },
+    {
+      "input": {
+        "year": 2030,
+        "jan1": {
+          "equity": 114000,
+          "vastrentend": 0,
+          "overig": 0,
+          "debt": 0
+        },
+        "result": {
+          "equity": 10000,
+          "vastrentend": 0,
+          "overig": 0
+        },
+        "debtInterest": 0,
+        "equityDeposits": 0,
+        "equitySale": {
+          "fraction": 0.05,
+          "proceeds": 6000
+        },
+        "kwijtschelding": 0,
+        "final": true
+      },
+      "expected": {
+        "regime": "werkelijk",
+        "tax": 5639,
+        "realisationTax": 5639,
+        "costBasis": 106400,
+        "taxed": {
+          "resultaat": 18000,
+          "heffingsvrijResultaat": 1836,
+          "inkomen": 16164,
+          "verliesVerrekend": 500,
+          "belastbaarInkomen": 15664,
+          "tax": 5639,
+          "verliesNaar": 0
+        }
+      }
+    }
+  ],
+  "tolerance": {
+    "taxAbs": 0
+  },
+  "source": "Hand calculation from the bill text: Wet werkelijk rendement box 3, Kamerstukken 36 748 nr. 2 (https://zoek.officielebekendmakingen.nl/kst-36748-2.html: art. 2.13, 5.1, 5.2, 5.40, 5.65, 5.67, VI) as amended by novelle 37 053 nr. 2 (https://www.tweedekamer.nl/downloads/document?id=2026D55225: art. 5.26, 5.32). No official calculator exists (#16).",
+  "retrieved": "2026-11-12",
+  "derivation": "2029: step-up to the 1 January value 100.000 (first werkelijk year), plus 12.000 bought → verkrijgingsprijs 112.000; the value rises to 120.000, unrealised. Resultaat = −500 DUO interest; the heffingsvrij resultaat only applies to a positive resultaat (art. 5.2), so the inkomen −500 is a verlies, carried forward in full (art. 5.65/5.67; the € 500 drempel is left out, #7). Tax 0. Had the pot been sold at the end of 2029: realised 120.000 − 112.000 = 8.000; resultaat 7.500; inkomen 7.500 − 1.800 = 5.700; tax 36% × 5.700 = 2.052 → realisation tax 2.052 − 0 = 2.052. 2030: at the start 5% of the pot is sold for 6.000; gemiddelde verkrijgingsprijs (art. 5.26) 5% × 112.000 = 5.600 → realised 400, remaining verkrijgingsprijs 106.400. The pot ends the term at 114.000 + 10.000 = 124.000 and is treated as sold (art. 5.32): realised 124.000 − 106.400 = 17.600. Resultaat 400 + 17.600 = 18.000. Heffingsvrij resultaat indexed from the year after the start (art. VI): 1.800 × 1,02 = 1.836 → inkomen 16.164; minus the 500 verlies (art. 5.1) → 15.664; tax 36% × 15.664 = 5.639,04 → 5.639. Without the deemed sale: resultaat 400, within the heffingsvrij resultaat → tax 0, so the realisation tax is 5.639."
+}

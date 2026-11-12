@@ -1,0 +1,28 @@
+{
+  "id": "d4",
+  "description": "Werkelijk rendement 2029: an unrealised equity gain is not taxed, but the vastrentend interest is and the DUO interest still counts",
+  "settings": { "inflation": 0.02 },
+  "years": [
+    {
+      "input": {
+        "year": 2029,
+        "jan1": { "equity": 120000, "vastrentend": 100000, "overig": 0, "debt": 25000 },
+        "result": { "equity": 8000, "vastrentend": 4000, "overig": 0 },
+        "debtInterest": 675,
+        "equityDeposits": 0,
+        "final": false
+      },
+      "expected": {
+        "regime": "werkelijk",
+        "tax": 549,
+        "realisationTax": 2880,
+        "costBasis": 120000,
+        "taxed": { "resultaat": 3325, "heffingsvrijResultaat": 1800, "inkomen": 1525, "verliesVerrekend": 0, "belastbaarInkomen": 1525, "tax": 549, "verliesNaar": 0 }
+      }
+    }
+  ],
+  "tolerance": { "taxAbs": 0 },
+  "source": "Hand calculation from the bill text: Wet werkelijk rendement box 3, Kamerstukken 36 748 nr. 2 (https://zoek.officielebekendmakingen.nl/kst-36748-2.html: art. 2.13, 5.1, 5.2, 5.40, 5.65, 5.67, VI) as amended by novelle 37 053 nr. 2 (https://www.tweedekamer.nl/downloads/document?id=2026D55225: art. 5.26, 5.32). No official calculator exists (#16).",
+  "retrieved": "2026-11-12",
+  "derivation": "2029 is the first werkelijk year, so the verkrijgingsprijs steps up to the 1 January value: 120.000. The equity fund gains 8.000 but nothing is sold, so there is no vervreemdingsvoordeel. Resultaat (art. 5.2) = vastrentend interest 4.000 (taxed yearly, 4% × 100.000) − DUO interest 675 (2,70% × 25.000, negative income) = 3.325. Heffingsvrij resultaat 1.800 (art. 5.40; not indexed in the start year, art. VI) → inkomen 1.525; no earlier verliezen → belastbaar 1.525; tax 36% (art. 2.13) × 1.525 = 549,00 → 549. Without the DUO debt it would be 36% × (4.000 − 1.800) = 792. If everything were sold at year end (art. 5.32), the 8.000 gain is realised: resultaat 11.325 → inkomen 9.525 → tax 3.429; realisation tax 3.429 − 549 = 2.880 (= 36% × 8.000)."
+}

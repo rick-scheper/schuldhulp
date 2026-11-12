@@ -3,7 +3,9 @@ import {
   DEFAULT_EQUITY_INDEX,
   DEFAULT_EQUITY_RETURN,
   DEFAULT_INCOME_GROWTH,
+  DEFAULT_BOX3_REGIME_PATH,
   DEFAULT_INFLATION,
+  DEFAULT_KWIJTSCHELDING_BELAST,
   DEFAULT_VASTRENTEND_PRODUCT,
   DEFAULT_VASTRENTEND_RATE,
   EQUITY_INDICES,
@@ -56,6 +58,10 @@ export interface InputDraft {
   freedUpDestination: FreedUpDestination;
   /** Box 3 category of the vastrentend pot. */
   vastrentendProduct: VastrentendProduct;
+  /** "Huidig forfait blijft gelden": no werkelijk rendement from 2029. */
+  forfaitBlijft: boolean;
+  /** "Kwijtschelding belast in box 3" (werkelijk-rendement years). */
+  kwijtscheldingBelast: boolean;
 }
 
 /** A yearly fraction as a Dutch percentage string: 0.0007 → "0,07". */
@@ -88,6 +94,8 @@ export const EMPTY_DRAFT: InputDraft = {
   indexSurplus: true,
   freedUpDestination: 'aandelen',
   vastrentendProduct: DEFAULT_VASTRENTEND_PRODUCT,
+  forfaitBlijft: DEFAULT_BOX3_REGIME_PATH === 'forfait-blijft',
+  kwijtscheldingBelast: DEFAULT_KWIJTSCHELDING_BELAST,
 };
 
 export interface ParsedInputs {
@@ -164,7 +172,12 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     mixAflossenShare: d.mixAflossenPct / 100,
     mixEquityShare: d.mixEquityPct / 100,
     freedUpDestination: d.freedUpDestination,
-    box3: { overigVermogen, vastrentendProduct: d.vastrentendProduct },
+    box3: {
+      overigVermogen,
+      vastrentendProduct: d.vastrentendProduct,
+      regimePath: d.forfaitBlijft ? 'forfait-blijft' : 'werkelijk-vanaf-2029',
+      kwijtscheldingBelast: d.kwijtscheldingBelast,
+    },
   };
 }
 

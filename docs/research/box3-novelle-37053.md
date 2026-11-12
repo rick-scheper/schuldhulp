@@ -31,6 +31,6 @@ Sources: [MvT 37053-3](https://www.tweedekamer.nl/downloads/document?id=2026D552
 
 ## Indexation and 2027 parameters
 
-- **Heffingsvrij resultaat and loss threshold:** indexed from 2029 under art. 10.1 and art. VI of 36 748. Not verified: whether art. VI is adjusted for the new 2029 start.
+- **Heffingsvrij resultaat and loss threshold:** indexed under art. 10.1. Art. VI lid 1 of 36 748 nr. 2 switches the art. 10.1 indexation off for art. 5.40 and 5.65 at the start of the first year (written as 2028), and art. VII lid 6 replaces "2028" by the actual start year when the law enters into force later ([kst-36748-2](https://zoek.officielebekendmakingen.nl/kst-36748-2.html), retrieved 2026-11-12). So with a 2029 start the € 1.800 applies in 2029 and is first indexed in 2030; the model (#24) does this with its inflation assumption.
 - **Belastingplan 2027 (37 022):** contains no box 3 parameter changes.
 - **2027 forfait percentages and heffingsvrij vermogen:** not published in primary sources. The 2026 bank and debt percentages are still provisional.

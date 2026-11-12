@@ -1,0 +1,33 @@
+{
+  "id": "d6",
+  "description": "Kwijtschelding with the switch on: the forgiven DUO balance is positive vermogensaanwas in the year it lapses (switch off: tax-free)",
+  "settings": { "inflation": 0.02, "kwijtscheldingBelast": true },
+  "years": [
+    {
+      "input": {
+        "year": 2029,
+        "jan1": { "equity": 0, "vastrentend": 0, "overig": 0, "debt": 20000 },
+        "result": { "equity": 0, "vastrentend": 0, "overig": 0 },
+        "debtInterest": 540,
+        "equityDeposits": 0,
+        "kwijtschelding": 20000,
+        "final": true
+      },
+      "expected": {
+        "regime": "werkelijk",
+        "tax": 6357,
+        "realisationTax": 0,
+        "costBasis": 0,
+        "taxed": { "resultaat": 19460, "heffingsvrijResultaat": 1800, "inkomen": 17660, "verliesVerrekend": 0, "belastbaarInkomen": 17660, "tax": 6357, "verliesNaar": 0 }
+      },
+      "expectedSwitchOff": {
+        "tax": 0,
+        "taxed": { "resultaat": -540, "heffingsvrijResultaat": 0, "inkomen": -540, "belastbaarInkomen": 0, "tax": 0, "verliesNaar": 540 }
+      }
+    }
+  ],
+  "tolerance": { "taxAbs": 0 },
+  "source": "Hand calculation from the bill text: Wet werkelijk rendement box 3, Kamerstukken 36 748 nr. 2 (https://zoek.officielebekendmakingen.nl/kst-36748-2.html: art. 2.13, 5.1, 5.2, 5.40, 5.65, 5.67, VI) as amended by novelle 37 053 nr. 2 (https://www.tweedekamer.nl/downloads/document?id=2026D55225: art. 5.26, 5.32). No official calculator exists (#16). Kwijtschelding as positive vermogensaanwas: MvT 36 748 §3.10 and art. 5.8(2)(a), as found in #15 (docs/research/box3-kwijtschelding.md on research/box3-kwijtschelding).",
+  "retrieved": "2026-11-12",
+  "derivation": "The term ends in 2029 with 20.000 DUO debt left, forgiven by law (Wsf art. 6.16). With nominal valuation the debt falls from 20.000 to 0 without payment: +20.000 vermogensaanwas (#15). DUO interest charged in the year 540 (2,70% × 20.000) is negative income. Resultaat 20.000 − 540 = 19.460; heffingsvrij resultaat 1.800 → inkomen 17.660; tax 36% × 17.660 = 6.357,60 → 6.357, about 36% of (forgiven balance − DUO interest − heffingsvrij resultaat) as #15 estimated. With the switch off the kwijtschelding is ignored: resultaat −540 → a 540 verlies, tax 0."
+}

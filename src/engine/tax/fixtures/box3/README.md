@@ -1,4 +1,4 @@
-# Box 3 cases (#16 check d1–d3)
+# Box 3 cases (#16 check d1–d6)
 
 One JSON per case: the 1 January holdings, the year's werkelijk rendement (null = forfait only),
 every step of the expected calculation, the tolerance (whole euro: 0), the source and a
@@ -29,3 +29,23 @@ and voordeel is taxed.
 | d2-overig | d2 + € 50k overig box 3-vermogen | € 1.572 |
 | d3-loss | d2, equities −10% | € 0 |
 | d3-low | d2, equities +1% (below the forfait) | € 189 |
+
+## Werkelijk rendement (d4–d6, #24)
+
+No official calculator exists, so these are hand calculations from the bill text (#16):
+Wet werkelijk rendement box 3, [36 748 nr. 2](https://zoek.officielebekendmakingen.nl/kst-36748-2.html)
+(art. 2.13 rate 36%; art. 5.1 belastbaar inkomen = inkomen − te verrekenen verliezen; art. 5.2 inkomen =
+resultaat − heffingsvrij resultaat for as far as the resultaat is positive; art. 5.40 heffingsvrij
+resultaat € 1.800; art. 5.65/5.67 verlies and carry-forward; art. VI no indexation at the start of the
+first year), as amended by novelle [37 053 nr. 2](https://www.tweedekamer.nl/downloads/document?id=2026D55225)
+(art. 5.26 gemiddelde verkrijgingsprijs; art. 5.32 deemed sale at market value), retrieved 2026-11-12.
+The bill sets no rounding for the resultaat; the model rounds it and the tax down to whole euros.
+
+Each fixture is a run of years fed through `createBox3Regime` (default regime path), with the
+expected tax, realisation tax, verkrijgingsprijs and every step of the calculation per year.
+
+| Case | What | Tax |
+|---|---|---|
+| d4 | 2029: € 8k unrealised equity gain, € 4k deposito interest, € 675 DUO interest | € 549 (realisation tax if sold: € 2.880) |
+| d5 | 2029 step-up + purchases and a € 500 verlies; 2030 partial sale at the average price and the end-of-term sale | € 0, then € 5.639 |
+| d6 | 2029 final year: € 20k forgiven, € 540 DUO interest; switch on / off | € 6.357 / € 0 |

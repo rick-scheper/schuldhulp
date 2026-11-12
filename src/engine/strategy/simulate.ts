@@ -1,6 +1,13 @@
 import { addMonths, type YearMonth } from '../time';
 import { createLoan, gridMonths, SF35_TERM_MONTHS, type LoanTerms } from '../duo/loan';
-import { createBox3Regime, type Box3Settings, type Box3Year, type Box3YearTax } from '../tax';
+import {
+  createBox3Regime,
+  withRegimePath,
+  type Box3RegimePath,
+  type Box3Settings,
+  type Box3Year,
+  type Box3YearTax,
+} from '../tax';
 import type { Market } from './market';
 import type { Strategy } from './strategy';
 
@@ -16,7 +23,7 @@ export interface PlanInput extends LoanTerms {
   /** Raise the surplus by `inflation` every 12 months. */
   indexSurplus: boolean;
   /**
-   * Box 3 (#7, #23): the eindvermogen is after tax when given. Null or absent leaves the pots
+   * Box 3 (#7, #23, #24): the eindvermogen is after tax when given. Null or absent leaves the pots
    * untaxed (pre-tax results, used by tests that check the cash flows on their own).
    */
   box3?: Box3Settings | null;
@@ -46,7 +53,7 @@ export interface StrategyOutcome {
   endMonth: YearMonth;
   /**
    * Pot value at the end of the terugbetaalfase, nominal: after box 3 when `box3` is given, with
-   * the pot treated as sold (no tax on the sale under the forfait).
+   * the pot treated as sold (realisation tax under werkelijk rendement; none under the forfait).
    */
   eindvermogenNominal: number;
   /** Same, in euro's van nu. */
@@ -68,6 +75,27 @@ export interface StrategyOutcome {
   trace?: StrategyMonth[];
   /** The box 3 calculation per calendar year (with `trace`). */
   box3Years?: Box3YearTax[];
+  /** The pot at each calendar year end, as if sold then (with `trace` or `potByYear`). See `potAfterTaxAt`. */
+  potByYear?: PotAtYearEnd[];
+}
+
+/** The pot at a calendar year end, nominal, as if it were sold then (#24, for the koopbudget). */
+export interface PotAtYearEnd {
+  year: number;
+  /** Month the year ends on the grid (December, or the last month of the term). */
+  month: YearMonth;
+  /** Equity + vastrentend pot after the year's box 3 tax. */
+  pot: number;
+  /** Box 3 tax still unpaid because the pot was empty; it comes off the pot's value. */
+  taxArrears: number;
+  /**
+   * The extra box 3 tax a sale of the whole pot at this year end would cost (werkelijk rendement:
+   * the realised equity gain; 0 under the forfait). In the final year the sale is already taxed,
+   * so this is the part of that year's tax due to the sale and is not taken again.
+   */
+  realisationTax: number;
+  /** What the user would keep after selling: pot − tax arrears − realisation tax (not yet paid). */
+  afterTax: number;
 }
 
 export interface SimulateOptions {
@@ -78,6 +106,8 @@ export interface SimulateOptions {
    * so the strategies stay cash-equal. Computed when omitted; pass it to share it between runs.
    */
   referencePayments?: Float64Array;
+  /** Record the pot at each calendar year end (`potByYear`); on with `trace`. */
+  potByYear?: boolean;
 }
 
 /** Deflator from nominal euros at the end of `months` to euro's van nu. */
@@ -113,10 +143,13 @@ export function referencePayments(p: PlanInput): Float64Array {
  *    recalculated at the statutory points (Wsf art. 6.9) and after a capped year (art. 6.15).
  * 6. Debt left after the last month is the kwijtgescholden bedrag; it never adds to the eindvermogen.
  * 7. Box 3 (when `p.box3` is given): in the last month of each calendar year (December, or the
- *    last month of the term) the year's tax is computed from the 1 January holdings and the
- *    year's actual result, and taken from the pots pro rata. What the pots cannot pay is taken
- *    from the next months' money (surplus and vrijgekomen geld) before it is allocated; anything
- *    still unpaid at the end comes off the eindvermogen. The kwijtschelding is tax-free (#7).
+ *    last month of the term) the regime path (forfait through 2028, werkelijk rendement from 2029
+ *    unless "forfait blijft") computes the year's tax from the 1 January holdings, the year's
+ *    result, the DUO interest charged and, in the final year, the kwijtschelding. The tax is taken
+ *    from the pots pro rata; under werkelijk rendement the equities sold for it realise a gain that
+ *    counts in the next year. What the pots cannot pay is taken from the next months' money
+ *    (surplus and vrijgekomen geld) before it is allocated; anything still unpaid at the end comes
+ *    off the eindvermogen. In the final year the whole pot is treated as sold.
  */
 export function simulateStrategy(
   p: PlanInput,
@@ -125,7 +158,34 @@ export function simulateStrategy(
   options: SimulateOptions = {},
 ): StrategyOutcome {
   const ref = options.referencePayments ?? referencePayments(p);
-  return run(p, strategy, market, ref, null, options.trace ?? false);
+  return run(p, strategy, market, ref, null, options.trace ?? false, options.potByYear ?? false);
+}
+
+/**
+ * The same plan, strategy and market under both box 3 regime paths: the default (werkelijk
+ * rendement from 2029) and "huidig forfait blijft gelden". The market is a pure function of the
+ * month, so both runs see the same scenario (#16 check e, the paired run of #25).
+ */
+export function simulateRegimePair(
+  p: PlanInput & { box3: Box3Settings },
+  strategy: Strategy,
+  market: Market,
+  options: SimulateOptions = {},
+): Record<Box3RegimePath, StrategyOutcome> {
+  const ref = options.referencePayments ?? referencePayments(p);
+  const runWith = (path: Box3RegimePath) =>
+    simulateStrategy({ ...p, box3: withRegimePath(p.box3, path) }, strategy, market, { ...options, referencePayments: ref });
+  return { 'werkelijk-vanaf-2029': runWith('werkelijk-vanaf-2029'), 'forfait-blijft': runWith('forfait-blijft') };
+}
+
+/**
+ * The pot after tax if sold at the end of calendar `year` (#24, for the koopbudget note at the
+ * hypotheekmoment), with the realisation tax as a separate figure. The run must record
+ * `potByYear` (options `potByYear` or `trace`). Null for a year outside the grid.
+ */
+export function potAfterTaxAt(outcome: StrategyOutcome, year: number): PotAtYearEnd | null {
+  if (!outcome.potByYear) throw new Error('potAfterTaxAt needs a run with the potByYear option');
+  return outcome.potByYear.find((y) => y.year === year) ?? null;
 }
 
 export interface ComparedOutcome extends StrategyOutcome {
@@ -153,6 +213,7 @@ function run(
   ref: Float64Array | null,
   recordPayments: Float64Array | null,
   trace = false,
+  recordPots = false,
 ): StrategyOutcome {
   const termMonths = p.termMonths ?? SF35_TERM_MONTHS;
   const endMonth = addMonths(p.repaymentStart, termMonths - 1);
@@ -177,7 +238,9 @@ function run(
   let taxArrears = 0;
   let totalTaxNominal = 0;
   let totalTaxReal = 0;
+  let equitySale: Box3Year['equitySale'] = null;
   const box3Years: Box3YearTax[] | undefined = trace && box3 ? [] : undefined;
+  const potByYear: PotAtYearEnd[] | undefined = trace || recordPots ? [] : undefined;
 
   for (let i = 0; i < n; i++) {
     equityPot *= market.equityGrowth(i);
@@ -207,11 +270,12 @@ function run(
     if (loan.balance === 0 && debtFreeMonth === null) debtFreeMonth = m.month;
 
     let box3Tax = 0;
+    let realisationTax = 0;
+    const final = i === n - 1;
     if (box3) {
       equityDeposits += invested * strategy.equityShare;
       vastrentendDeposits += invested * (1 - strategy.equityShare);
       debtInterest += m.interest;
-      const final = i === n - 1;
       if (m.month.month === 12 || final) {
         const year = m.month.year;
         const overigNext = overigAt(year + 1);
@@ -225,16 +289,22 @@ function run(
           },
           debtInterest,
           final,
+          equityDeposits,
+          equitySale,
+          kwijtschelding: final ? loan.balance : 0,
         });
         box3Years?.push(y);
         box3Tax = y.tax;
+        realisationTax = y.realisationTax;
         totalTaxNominal += y.tax;
         totalTaxReal += toEurosVanNu(y.tax, i + 1, p.inflation);
         // Pay from the pots pro rata; the rest comes from the next months' money.
         const pot = equityPot + vastrentendPot;
         const fromPot = Math.min(y.tax, pot);
+        equitySale = null;
         if (fromPot > 0) {
           const keep = (pot - fromPot) / pot;
+          equitySale = { fraction: 1 - keep, proceeds: equityPot * (1 - keep) };
           equityPot *= keep;
           vastrentendPot *= keep;
         }
@@ -244,6 +314,18 @@ function run(
         vastrentendDeposits = 0;
         debtInterest = 0;
       }
+    }
+
+    if (potByYear && (m.month.month === 12 || final)) {
+      const pot = equityPot + vastrentendPot;
+      potByYear.push({
+        year: m.month.year,
+        month: m.month,
+        pot,
+        taxArrears,
+        realisationTax,
+        afterTax: pot - taxArrears - (final ? 0 : realisationTax),
+      });
     }
 
     rows?.push({
@@ -278,5 +360,6 @@ function run(
     box3TaxReal: totalTaxReal,
     ...(rows ? { trace: rows } : {}),
     ...(box3Years ? { box3Years } : {}),
+    ...(potByYear ? { potByYear } : {}),
   };
 }

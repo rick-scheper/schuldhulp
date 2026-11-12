@@ -51,9 +51,9 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
         <p className="lede">Extra aflossen op je studieschuld of beleggen? Begin met wat DUO nu van je vraagt.</p>
       </header>
       <InputForm draft={draft} onChange={setDraft} rateInfo={rateInfo(draft, today)} />
-      {schedule && outcomes && rate?.ok ? (
+      {schedule && outcomes && inputs && rate?.ok ? (
         <>
-          <StrategyResult outcomes={outcomes} />
+          <StrategyResult outcomes={outcomes} box3={inputs.box3} />
           <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>
       ) : (
@@ -63,7 +63,9 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
       )}
       <footer className="hint">
         Geen financieel advies. Rekent met één verwacht verloop van de rente (zonder spreiding), vaste rendementen en
-        het huidige box 3-forfait voor de hele looptijd.
+        {draft.forfaitBlijft
+          ? 'het huidige box 3-forfait voor de hele looptijd.'
+          : 'box 3: het huidige forfait tot en met 2028, daarna werkelijk rendement volgens het wetsvoorstel.'}
       </footer>
     </main>
   );
