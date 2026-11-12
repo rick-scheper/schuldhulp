@@ -1,5 +1,6 @@
 import {
   incomeInYear,
+  kostenKoper,
   leenruimte,
   maxKoopsom,
   toEurosVanNu,
@@ -116,10 +117,27 @@ export function leenruimteAt(p: CockpitPoint, s: LeenruimteSettings, ctx: Leenru
   const potNu = s.potMeetellen ? p.potAandelenNominal * d : 0;
   const spaargeld = potNu + s.spaargeld;
   const inbreng = maxKoopsom(met.max, spaargeld, s);
-  // Pay off what the savings can spare after the kosten koper of the eigen-inbreng purchase.
-  const duoAfgelostNu = Math.min(p.debtNominal * d, Math.max(0, spaargeld - inbreng.kostenKoper));
-  const naAflossen = at(p.debtNominal - duoAfgelostNu / d);
-  const duo = maxKoopsom(naAflossen.max, spaargeld - duoAfgelostNu, s);
+  // Pay off what the savings can spare after the kosten koper of the purchase that paying off
+  // makes possible. That purchase has a larger mortgage (more NHG premium) than the eigen-inbreng
+  // one, so keeping only the latter's kosten koper would cap the price at the old mortgage.
+  const debtNu = p.debtNominal * d;
+  const duoMet = (afgelost: number) => {
+    const max = at(p.debtNominal - afgelost / d).max;
+    return { afgelost, koopsom: maxKoopsom(max, spaargeld - afgelost, s) };
+  };
+  const afgelostNa = (kk: number) => Math.min(debtNu, Math.max(0, spaargeld - kk));
+  let afgelost = afgelostNa(inbreng.kostenKoper);
+  let best = duoMet(afgelost);
+  // Fixed point on the kosten koper of the full mortgage after paying off; a few rounds
+  // converge, since the kosten koper move far less than a euro per euro paid off.
+  for (let round = 0; round < 4; round++) {
+    const max = at(p.debtNominal - afgelost / d).max;
+    afgelost = afgelostNa(kostenKoper(max, max, s));
+    const c = duoMet(afgelost);
+    if (c.koopsom.prijs > best.koopsom.prijs) best = c;
+  }
+  const duoAfgelostNu = best.afgelost;
+  const duo = best.koopsom;
   // From euro's van nu to the display unit.
   const f = ctx.unit === 'real' ? 1 : 1 / d;
   const duoAfgelost = duoAfgelostNu;
