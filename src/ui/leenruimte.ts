@@ -1,4 +1,7 @@
 import {
+  DEFAULT_OPLEIDINGSNIVEAU,
+  DEFAULT_SECTOR,
+  incomeForecast,
   incomeInYear,
   kostenKoper,
   leenruimte,
@@ -10,14 +13,30 @@ import {
   type IncomePath,
   type Koopsom,
   type KoopsomOptions,
+  type Opleidingsniveau,
+  type Sector,
 } from '../engine';
 import type { Cockpit, CockpitPoint } from './cockpit';
 import type { Unit } from './DuelResult';
 
+/**
+ * The partner's income, forecast like the user's: the inkomensvoorspelling for their own sector,
+ * opleiding and afstudeerjaar, or a fixed nominal growth.
+ */
+export interface PartnerSettings {
+  /** Gross yearly income today; 0 = buying alone. */
+  income: number;
+  sector: Sector;
+  opleidingsniveau: Opleidingsniveau;
+  /** The year the partner finished studying; null = the same as the user's. */
+  graduationYear: number | null;
+  /** A fixed nominal growth per year; null = the inkomensvoorspelling. */
+  growth: number | null;
+}
+
 /** The Leenruimte lens' own settings (not saved; the defaults suit a single starter). */
 export interface LeenruimteSettings extends KoopsomOptions {
-  /** Partner's gross yearly income today; 0 = buying alone. Grows like the user's income. */
-  partnerIncome: number;
+  partner: PartnerSettings;
   /** The quoted rate for a rentevaste periode of 10 years or more. */
   toetsrente: number;
   /** Rentevaste periode under 10 years: the toetsrente is at least 5% (Trhk art. 3 lid 9–10). */
@@ -32,8 +51,16 @@ export interface LeenruimteSettings extends KoopsomOptions {
   spaargeld: number;
 }
 
+export const DEFAULT_PARTNER: PartnerSettings = {
+  income: 0,
+  sector: DEFAULT_SECTOR,
+  opleidingsniveau: DEFAULT_OPLEIDINGSNIVEAU,
+  graduationYear: null,
+  growth: null,
+};
+
 export const DEFAULT_LEENRUIMTE: LeenruimteSettings = {
-  partnerIncome: 0,
+  partner: DEFAULT_PARTNER,
   toetsrente: 0.04,
   korteRentevast: false,
   label: 'AB',
@@ -60,6 +87,8 @@ export const LABELS: { key: EnergieLabel; label: string }[] = [
 export interface LeenruimtePoint {
   year: number;
   income: number;
+  /** The partner's income that year (0 when buying alone). */
+  partnerIncome: number;
   /** DUO debt left, paying only the termijn. */
   restschuld: number;
   /** The invested pot counted as savings (0 when not counted). */
@@ -70,6 +99,8 @@ export interface LeenruimtePoint {
   zonderSchuld: number;
   /** Max mortgage with the DUO termijn of paying only the termijn. */
   metSchuld: number;
+  /** Max mortgage on the user's income alone, with the DUO termijn (equals `metSchuld` without a partner). */
+  alleenMetSchuld: number;
   /** Max mortgage after 100% extra aflossen up to this year (assuming DUO recalculated the termijn). */
   metAflossen: number;
   /** What the DUO debt takes off, paying only the termijn. */
@@ -86,6 +117,8 @@ export interface LeenruimteContext {
   income: IncomePath;
   /** The year of `today`: the income path's base year. */
   baseYear: number;
+  /** The user's afstudeerjaar: the partner's default. */
+  graduationYear: number;
   inflation: number;
   unit: Unit;
 }
@@ -98,19 +131,36 @@ function scaleKoopsom(k: Koopsom, f: number): Koopsom {
   return { ...k, prijs: k.prijs * f, hypotheek: k.hypotheek * f, starterslening: k.starterslening * f, kostenKoper: k.kostenKoper * f, eigenInbreng: k.eigenInbreng * f };
 }
 
-/** The lens' figures at one cockpit point (one calendar year end). Everything is computed nominal, then deflated. */
-export function leenruimteAt(p: CockpitPoint, s: LeenruimteSettings, ctx: LeenruimteContext): LeenruimtePoint {
+/** The partner's income path, or null when buying alone. */
+export function partnerPath(s: PartnerSettings, ctx: Pick<LeenruimteContext, 'baseYear' | 'graduationYear'>): IncomePath | null {
+  if (s.income <= 0) return null;
+  if (s.growth !== null) return { income: s.income, growth: s.growth };
+  const graduationYear = s.graduationYear ?? ctx.graduationYear;
+  return { income: s.income, growth: incomeForecast({ sector: s.sector, opleidingsniveau: s.opleidingsniveau, graduationYear }, ctx.baseYear) };
+}
+
+/**
+ * The lens' figures at one cockpit point (one calendar year end). Everything is computed nominal,
+ * then deflated. `partner` overrides the partner's income path from the settings.
+ */
+export function leenruimteAt(
+  p: CockpitPoint,
+  s: LeenruimteSettings,
+  ctx: LeenruimteContext,
+  partner: IncomePath | null = partnerPath(s.partner, ctx),
+): LeenruimtePoint {
   const r = effectiveRate(s);
-  const growth = incomeInYear(p.year, ctx.income, ctx.baseYear) / ctx.income.income;
   const income = incomeInYear(p.year, ctx.income, ctx.baseYear);
-  const partnerIncome = s.partnerIncome * growth;
+  const partnerIncome = partner ? incomeInYear(p.year, partner, ctx.baseYear) : 0;
   // Work in euro's van nu: the Trhk norms, the €17k, the label amounts and the starters- and
   // NHG-grens are updated every year, roughly with prices, so the 2026 figures are applied to
   // deflated amounts. Savings are a what-if in euro's van nu. Results go back to the display unit.
   const d = toEurosVanNu(1, p.monthIndex + 1, ctx.inflation);
   const termijn = (debt: number) => (debt > 0.5 && p.remainingMonths > 0 ? wettelijkTermijn(debt, p.duoRate, p.remainingMonths) * d : 0);
-  const at = (debt: number) => leenruimte({ income: income * d, partnerIncome: partnerIncome * d, toetsrente: r, duoTermijn: termijn(debt), label: s.label });
+  const at = (debt: number, samen = true) =>
+    leenruimte({ income: income * d, partnerIncome: samen ? partnerIncome * d : 0, toetsrente: r, duoTermijn: termijn(debt), label: s.label });
   const met = at(p.debtNominal);
+  const alleen = partner ? at(p.debtNominal, false) : met;
   const aflossen = at(p.debtAflossenNominal);
   // The pot is the first part of the savings: what investing the inleg and surplus (paying only
   // the termijn, like `met`) has grown to by the buying year. Before the tax on selling.
@@ -144,11 +194,13 @@ export function leenruimteAt(p: CockpitPoint, s: LeenruimteSettings, ctx: Leenru
   return {
     year: p.year,
     income: income * d * f,
+    partnerIncome: partnerIncome * d * f,
     restschuld: p.debtNominal * d * f,
     pot: potNu * f,
     spaargeld: spaargeld * f,
     zonderSchuld: met.maxZonderSchuld * f,
     metSchuld: met.max * f,
+    alleenMetSchuld: alleen.max * f,
     metAflossen: aflossen.max * f,
     duoVerlaging: met.duoVerlaging * f,
     koopsomInbreng: scaleKoopsom(inbreng, f),
@@ -187,8 +239,14 @@ export function strategyEffects(c: Cockpit, index: number, s: LeenruimteSettings
   if (base.spaargeld > 0) {
     effects.push({ key: 'spaargeld-duo', label: 'Spaargeld eerst bij DUO aflossen', delta: base.koopsomDuo.prijs - price(base) });
   }
-  if (s.partnerIncome <= 0) {
-    effects.push({ key: 'partner', label: 'Samen kopen, partner met hetzelfde inkomen', delta: with_({ partnerIncome: ctx.income.income }) });
+  const partner = partnerPath(s.partner, ctx);
+  if (partner) {
+    const alone = leenruimteAt(p, s, ctx, null);
+    effects.push({ key: 'partner', label: 'Alleen kopen, zonder je partner', delta: price(alone) - price(base) });
+  } else {
+    // A partner on the user's own path: the same income and the same growth.
+    const same = leenruimteAt(p, s, ctx, ctx.income);
+    effects.push({ key: 'partner', label: 'Samen kopen, partner met jouw inkomen en groei', delta: price(same) - price(base) });
   }
   if (s.label !== 'A++++' && s.label !== 'A4G') {
     effects.push({ key: 'label', label: 'Huis met energielabel A++++', delta: with_({ label: 'A++++' }) });

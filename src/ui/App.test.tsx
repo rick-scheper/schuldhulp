@@ -799,6 +799,30 @@ describe('cockpit', () => {
     expect(screen.getByTestId('leenruimte-tekort')).toBeTruthy();
   });
 
+  it('the Leenruimte lens forecasts a partner income with its own growth', () => {
+    render(<App today={ym(2027, 1)} monteCarlo={null} />);
+    fill('30.000', '50.000');
+    showLens('Leenruimte');
+    const amount = (id: string) => Number(text(id).replace(/[^\d-]/g, ''));
+    fireEvent.change(screen.getByLabelText('Jaar waarin je koopt'), { target: { value: '5' } });
+    const alone = amount('leenruimte-max');
+    expect(screen.queryByTestId('leenruimte-partner')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Inkomen partner'), { target: { value: '40.000' } });
+    expect(amount('leenruimte-max')).toBeGreaterThan(alone + 100_000);
+    expect(text('leenruimte-samen')).toMatch(/^\+.*door je partner/);
+    expect(screen.getByTestId('effect-partner').textContent).toMatch(/Alleen kopen/);
+    fireEvent.change(screen.getByLabelText('Inkomensgroei partner'), { target: { value: '0' } });
+    expect(screen.getByLabelText<HTMLSelectElement>('Sector partner').disabled).toBe(true);
+    const flat = amount('leenruimte-max');
+    // 0% nominal growth, shown in euro's van nu: inflation eats into it.
+    const partner = Number(text('leenruimte-partner-inkomen').match(/ongeveer € ([\d.]+)/)![1]!.replace(/\./g, ''));
+    expect(partner).toBeLessThan(40_000);
+    expect(partner).toBeGreaterThan(34_000);
+    fireEvent.change(screen.getByLabelText('Inkomensgroei partner'), { target: { value: '' } });
+    // The inkomensvoorspelling grows the partner's income, so they borrow more than with 0% growth.
+    expect(amount('leenruimte-max')).toBeGreaterThan(flat);
+  });
+
   it('shows one lens at a time', () => {
     render(<App today={ym(2027, 1)} monteCarlo={null} />);
     fill();

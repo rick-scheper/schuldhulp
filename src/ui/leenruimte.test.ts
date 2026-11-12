@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { aflosFactor } from '../engine';
 import type { CockpitPoint } from './cockpit';
-import { DEFAULT_LEENRUIMTE, leenruimteAt, type LeenruimteContext } from './leenruimte';
+import { DEFAULT_LEENRUIMTE, DEFAULT_PARTNER, leenruimteAt, type LeenruimteContext, type PartnerSettings } from './leenruimte';
 
 /** A buying year with no inflation, so nominal = euro's van nu. */
 function point(over: Partial<CockpitPoint>): CockpitPoint {
@@ -27,7 +27,7 @@ function point(over: Partial<CockpitPoint>): CockpitPoint {
   };
 }
 
-const ctx = (income: number): LeenruimteContext => ({ income: { income, growth: 0 }, baseYear: 2035, inflation: 0, unit: 'real' });
+const ctx = (income: number): LeenruimteContext => ({ income: { income, growth: 0 }, baseYear: 2035, graduationYear: 2030, inflation: 0, unit: 'real' });
 
 describe('leenruimteAt: savings first to DUO', () => {
   it('beats eigen inbreng when each euro paid off buys more than a euro of mortgage', () => {
@@ -50,5 +50,35 @@ describe('leenruimteAt: savings first to DUO', () => {
     const r = leenruimteAt(point({ potAandelen: 150_000, potAandelenNominal: 150_000 }), DEFAULT_LEENRUIMTE, ctx(88_000));
     expect(r.duoAfgelost).toBeCloseTo(96_000, 0);
     expect(r.koopsomDuo.hypotheek).toBeCloseTo(r.zonderSchuld, -2);
+  });
+});
+
+describe('leenruimteAt: the partner', () => {
+  const base = { ...DEFAULT_LEENRUIMTE, potMeetellen: false };
+  const withPartner = (patch: Partial<PartnerSettings>) => ({ ...base, partner: { ...DEFAULT_PARTNER, income: 40_000, ...patch } });
+
+  it('grows the partner income along its own path, not the user’s', () => {
+    // The user's income is flat; the partner grows 3% a year from the base year 2030.
+    const c: LeenruimteContext = { income: { income: 50_000, growth: 0 }, baseYear: 2030, graduationYear: 2025, inflation: 0, unit: 'real' };
+    const r = leenruimteAt(point({}), withPartner({ growth: 0.03 }), c);
+    expect(r.income).toBeCloseTo(50_000, 0);
+    expect(r.partnerIncome).toBeCloseTo(40_000 * 1.03 ** 5, 0);
+  });
+
+  it('uses the inkomensvoorspelling for the partner’s sector and afstudeerjaar', () => {
+    const c: LeenruimteContext = { income: { income: 50_000, growth: 0 }, baseYear: 2030, graduationYear: 2029, inflation: 0, unit: 'real' };
+    const junior = leenruimteAt(point({}), withPartner({ opleidingsniveau: 'wo' }), c).partnerIncome;
+    const senior = leenruimteAt(point({}), withPartner({ opleidingsniveau: 'wo', graduationYear: 2000 }), c).partnerIncome;
+    // Five years of career growth right after graduating; none 30 years in.
+    expect(junior).toBeGreaterThan(senior * 1.3);
+    expect(senior).toBeGreaterThan(40_000);
+  });
+
+  it('borrows more together than alone, and reports the alone figure', () => {
+    const r = leenruimteAt(point({}), withPartner({ growth: 0 }), ctx(50_000));
+    expect(r.metSchuld).toBeGreaterThan(r.alleenMetSchuld + 100_000);
+    const alone = leenruimteAt(point({}), base, ctx(50_000));
+    expect(r.alleenMetSchuld).toBeCloseTo(alone.metSchuld, 0);
+    expect(alone.partnerIncome).toBe(0);
   });
 });

@@ -8,12 +8,13 @@ import {
   buildLeenruimte,
   DEFAULT_LEENRUIMTE,
   LABELS,
+  type PartnerSettings,
   strategyEffects,
   TOETSRENTES,
   type LeenruimteContext,
   type LeenruimteSettings,
 } from './leenruimte';
-import { LEENRUIMTE_REGELS, type EnergieLabel } from '../engine';
+import { LEENRUIMTE_REGELS, SECTORS, type EnergieLabel, type Opleidingsniveau, type Sector } from '../engine';
 
 interface Props {
   cockpit: Cockpit;
@@ -36,8 +37,12 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
   const [s, setS] = useState<LeenruimteSettings>(DEFAULT_LEENRUIMTE);
   const [spaarDraft, setSpaarDraft] = useState(() => String(s.spaargeld));
   const [partnerDraft, setPartnerDraft] = useState('');
+  const [partnerGradDraft, setPartnerGradDraft] = useState('');
+  const [partnerGrowthDraft, setPartnerGrowthDraft] = useState('');
   const [index, setIndex] = useState(() => Math.min(c.points.length - 1, Math.max(0, Math.round(jaren))));
   const set = (patch: Partial<LeenruimteSettings>) => setS((old) => ({ ...old, ...patch }));
+  const setPartner = (patch: Partial<PartnerSettings>) => setS((old) => ({ ...old, partner: { ...old.partner, ...patch } }));
+  const samen = s.partner.income > 0;
   const full = ctx && { ...ctx, unit };
   const points = useMemo(() => (full ? buildLeenruimte(c, s, full) : []), [c, s, ctx, unit]);
   const i = Math.min(index, c.points.length - 1);
@@ -67,6 +72,13 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
               bruto jaarinkomen (Trhk-leennormen 2026, toetsrente {pct(effectiveRate)}). Hoe meer je verdient, hoe meer: de grijze lijn groeit
               mee met je inkomen.
             </p>
+            {samen && (
+              <p>
+                Samen kopen telt het inkomen van je partner voor 100% mee, en de leennorm hoort bij jullie samen opgetelde inkomen: daardoor lenen
+                jullie meer dan twee keer wat één van jullie alleen kan lenen (behalve de € 17.000 extra voor alleenstaanden). De stippellijn
+                is wat jij alleen zou kunnen lenen.
+              </p>
+            )}
             <p>
               Je DUO-termijn gaat daar van af: elke € 100 per maand kost ongeveer € 25.000 hypotheek. Los je extra af én laat je DUO je termijn
               opnieuw berekenen, dan krijg je die ruimte terug (blauwe lijn).
@@ -76,8 +88,9 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
               kosten koper betaal je zelf. Wat je belegt (je inleg en surplus in aandelen) telt als je spaargeld in het jaar dat je koopt.
             </p>
             <p className="hint">
-              Leennormen en grenzen van 2026, voor latere jaren meegegroeid met de inflatie; je extra spaargeld is in euro's van nu en je
-              partner groeit mee met jouw inkomen. Je belegde pot is het rekenvoorbeeld van 100% aandelen, zonder de belasting bij verkoop. Kosten koper geschat op{' '}
+              Leennormen en grenzen van 2026, voor latere jaren meegegroeid met de inflatie; je extra spaargeld is in euro's van nu. Het
+              inkomen van je partner groeit met een eigen inkomensvoorspelling (sector, opleiding, afstudeerjaar) of een vaste groei; een
+              studieschuld van je partner telt niet mee. Je belegde pot is het rekenvoorbeeld van 100% aandelen, zonder de belasting bij verkoop. Kosten koper geschat op{' '}
               {formatAmount(LEENRUIMTE_REGELS.overigeKostenKoper)} plus overdrachtsbelasting en NHG-premie. Geen advies.
             </p>
           </>
@@ -91,11 +104,17 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
             { key: 'zonder', label: 'Zonder studieschuld', color: 'var(--text-muted)', values: points.map((q) => q.zonderSchuld), dashed: true },
             { key: 'met', label: 'Met je studieschuld', color: 'var(--lose)', values: points.map((q) => q.metSchuld), area: true },
             { key: 'aflossen', label: 'Met extra aflossen', color: 'var(--accent)', values: points.map((q) => q.metAflossen) },
+            ...(samen
+              ? [{ key: 'alleen', label: 'Alleen jij, met je studieschuld', color: 'var(--lose)', values: points.map((q) => q.alleenMetSchuld), dashed: true }]
+              : []),
           ]}
           markers={marker}
           explain={(k) => {
             const q = points[k]!;
-            return `Eind ${q.year} verdien je ongeveer ${formatAmount(q.income)} per jaar. Je studieschuld kost je dan ${formatAmount(q.duoVerlaging)} hypotheek.`;
+            const inkomen = samen
+              ? `verdien je ongeveer ${formatAmount(q.income)} en je partner ${formatAmount(q.partnerIncome)} per jaar, samen ${formatAmount(q.income + q.partnerIncome)}`
+              : `verdien je ongeveer ${formatAmount(q.income)} per jaar`;
+            return `Eind ${q.year} ${inkomen}. Je studieschuld kost ${samen ? 'jullie' : 'je'} dan ${formatAmount(q.duoVerlaging)} hypotheek.`;
           }}
         />
       </LensLayout>
@@ -138,7 +157,7 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
               onChange={(e) => {
                 setPartnerDraft(e.target.value);
                 const v = e.target.value.trim() === '' ? 0 : parseDutchNumber(e.target.value);
-                if (v !== null && v >= 0) set({ partnerIncome: v });
+                if (v !== null && v >= 0) setPartner({ income: v });
               }}
             />
           </label>
@@ -163,6 +182,77 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
             </select>
           </label>
         </div>
+        {samen && (
+          <fieldset className="leenruimte-partner" data-testid="leenruimte-partner">
+            <legend>Inkomensgroei partner</legend>
+            <div className="leenruimte-fields">
+              <label>
+                <span>Sector</span>
+                <select
+                  value={s.partner.sector}
+                  disabled={s.partner.growth !== null}
+                  onChange={(e) => setPartner({ sector: e.target.value as Sector })}
+                  aria-label="Sector partner"
+                >
+                  {Object.entries(SECTORS).map(([id, info]) => (
+                    <option key={id} value={id}>
+                      {info.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Opleiding</span>
+                <select
+                  value={s.partner.opleidingsniveau}
+                  disabled={s.partner.growth !== null}
+                  onChange={(e) => setPartner({ opleidingsniveau: e.target.value as Opleidingsniveau })}
+                  aria-label="Opleiding partner"
+                >
+                  <option value="hbo">Hbo</option>
+                  <option value="wo">Wo</option>
+                </select>
+              </label>
+              <label>
+                <span>Afstudeerjaar</span>
+                <input
+                  inputMode="numeric"
+                  placeholder={String(full.graduationYear)}
+                  value={partnerGradDraft}
+                  disabled={s.partner.growth !== null}
+                  aria-label="Afstudeerjaar partner"
+                  onChange={(e) => {
+                    setPartnerGradDraft(e.target.value);
+                    const raw = e.target.value.trim();
+                    if (raw === '') setPartner({ graduationYear: null });
+                    else if (/^\d{4}$/.test(raw) && Math.abs(Number(raw) - full.baseYear) <= 45) setPartner({ graduationYear: Number(raw) });
+                  }}
+                />
+              </label>
+              <label>
+                <span>Vaste groei (%)</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="voorspelling"
+                  value={partnerGrowthDraft}
+                  aria-label="Inkomensgroei partner"
+                  onChange={(e) => {
+                    setPartnerGrowthDraft(e.target.value);
+                    if (e.target.value.trim() === '') return setPartner({ growth: null });
+                    const v = parseDutchNumber(e.target.value);
+                    if (v !== null && v >= 0 && v <= 20) setPartner({ growth: v / 100 });
+                  }}
+                />
+              </label>
+            </div>
+            <p className="hint" data-testid="leenruimte-partner-inkomen">
+              Eind {p.year} verdient je partner ongeveer {formatAmount(p.partnerIncome)} per jaar; samen {formatAmount(p.income + p.partnerIncome)}.
+              {s.partner.growth === null
+                ? ' Groei volgens de cao-lonen plus werkervaring, zoals bij jouw inkomensvoorspelling; leeg afstudeerjaar = hetzelfde als jij.'
+                : ` Elk jaar ${pct(s.partner.growth)} groei.`}
+            </p>
+          </fieldset>
+        )}
         <div className="leenruimte-checks">
           <label>
             <input type="checkbox" checked={s.potMeetellen} onChange={(e) => set({ potMeetellen: e.target.checked })} /> Belegde pot
@@ -190,6 +280,11 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
         <div className="kpi">
           <dt>Max hypotheek eind {p.year}</dt>
           <dd data-testid="leenruimte-max">{formatAmount(p.metSchuld)}</dd>
+          {samen && (
+            <dd className="kpi-sub" data-testid="leenruimte-samen">
+              {formatSignedAmount(p.metSchuld - p.alleenMetSchuld)} door je partner
+            </dd>
+          )}
         </div>
         <div className="kpi">
           <dt>Kost je studieschuld</dt>

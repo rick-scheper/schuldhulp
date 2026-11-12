@@ -15,14 +15,14 @@ import { ScheduleResult } from './ScheduleResult';
 import { DuelResult, type Unit } from './DuelResult';
 import { ResultsHeader } from './ResultsHeader';
 import { StrategyResult } from './StrategyResult';
-import { incomeOutlook, monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
+import { graduationYear, incomeOutlook, monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
 import { useMonteCarlo } from './useMonteCarlo';
 import { RangeStrips } from './RangeStrips';
 import { BreakEvenChart } from './BreakEvenChart';
 import { FanChart } from './FanChart';
 import { Assumptions } from './Assumptions';
 import { box3StatusKort, rekenregelsStamp } from './rekenregels';
-import { BOX3_WERKELIJK, MONTE_CARLO_N } from '../engine';
+import { BOX3_WERKELIJK, graduationYearFromRepaymentStart, MONTE_CARLO_N } from '../engine';
 import { buildDuel } from './duel';
 import { MortgageNote } from './MortgageNote';
 import { DEFAULT_SAVED_STATE, encodeState } from './share';
@@ -242,7 +242,7 @@ export function App({ today = currentMonth(), initialDraft, monteCarlo }: Props)
               <LeenruimteLens
                 cockpit={cockpit}
                 unit={unit}
-                ctx={plan?.income ? { income: plan.income, baseYear: today.year, inflation: plan.inflation } : null}
+                ctx={plan?.income ? { income: plan.income, baseYear: today.year, graduationYear: graduationYear(draft, plan.repaymentStart, today) ?? graduationYearFromRepaymentStart(plan.repaymentStart.year), inflation: plan.inflation } : null}
                 jaren={hypotheekJaren}
                 surplus={inputs.surplus}
               />
