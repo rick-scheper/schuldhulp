@@ -31,6 +31,7 @@ import {
   type RatePeriodKind,
   type EquityIndex,
   type FreedUpDestination,
+  type GrowthSeries,
   type IncomePath,
   type Opleidingsniveau,
   type Sector,
@@ -38,6 +39,9 @@ import {
   type VastrentendProduct,
   type YearMonth,
 } from '../engine';
+
+/** How the monthly surplus grows each year: fixed, with inflation, or along with the salary. */
+export type SurplusIndex = 'geen' | 'inflatie' | 'salaris';
 
 /** What the user typed, as strings where partially typed values must survive re-renders. */
 export interface InputDraft {
@@ -74,7 +78,8 @@ export interface InputDraft {
   constantRate: boolean;
   /** "Verwachte langetermijnrente": θ of the 5-year yield model (#5). */
   thetaPct: string;
-  indexSurplus: boolean;
+  /** How the surplus grows each year: not, with inflation, or with the salary growth. */
+  surplusIndex: SurplusIndex;
   freedUpDestination: FreedUpDestination;
   /** Box 3 category of the vastrentend pot. */
   vastrentendProduct: VastrentendProduct;
@@ -115,7 +120,7 @@ export const EMPTY_DRAFT: InputDraft = {
   incomeGrowthPct: '',
   constantRate: false,
   thetaPct: pct(DEFAULT_VASICEK.theta),
-  indexSurplus: true,
+  surplusIndex: 'inflatie',
   freedUpDestination: 'aandelen',
   vastrentendProduct: DEFAULT_VASTRENTEND_PRODUCT,
   forfaitBlijft: DEFAULT_BOX3_REGIME_PATH === 'forfait-blijft',
@@ -138,6 +143,8 @@ export interface ParsedInputs {
   income: IncomePath | null;
   inflation: number;
   indexSurplus: boolean;
+  /** The salary growth the surplus follows ("groeit mee met salaris"); null = inflation. */
+  surplusGrowth: number | GrowthSeries | null;
   returns: ReturnAssumptions;
   mixAflossenShare: number;
   mixEquityShare: number;
@@ -160,19 +167,27 @@ export function graduationYear(d: InputDraft, repaymentStart: YearMonth, today: 
   return year >= today.year - 45 && year <= today.year + 10 ? year : null;
 }
 
-/** The income path of a draft: a fixed growth when one is typed, else the inkomensvoorspelling. */
-function incomePath(d: InputDraft, income: number, repaymentStart: YearMonth, today: YearMonth): IncomePath | null {
+/**
+ * The expected income growth of a draft: a fixed growth when one is typed, else the
+ * inkomensvoorspelling. Null when the growth or the afstudeerjaar is invalid.
+ */
+function incomeGrowth(d: InputDraft, repaymentStart: YearMonth, today: YearMonth): Pick<IncomePath, 'growth' | 'voetGrowth'> | null {
   if (d.incomeGrowthPct.trim() !== '') {
     const growth = parsePct(d.incomeGrowthPct, 20);
-    return growth === null ? null : { income, growth };
+    return growth === null ? null : { growth };
   }
   const grad = graduationYear(d, repaymentStart, today);
   if (grad === null) return null;
   return {
-    income,
     growth: incomeForecast({ sector: d.sector, opleidingsniveau: d.opleidingsniveau, graduationYear: grad }, today.year),
     voetGrowth: voetForecast(today.year),
   };
+}
+
+/** The income path of a draft: the income with its expected growth. */
+function incomePath(d: InputDraft, income: number, repaymentStart: YearMonth, today: YearMonth): IncomePath | null {
+  const g = incomeGrowth(d, repaymentStart, today);
+  return g === null ? null : { income, ...g };
 }
 
 export function parseInputs(d: InputDraft, today: YearMonth): ParsedInputs | null {
@@ -191,6 +206,9 @@ export function parseInputs(d: InputDraft, today: YearMonth): ParsedInputs | nul
   const income = d.income.trim() === '' ? undefined : parseDutchNumber(d.income);
   const path = income == null || repaymentStart === null ? undefined : incomePath(d, income, repaymentStart, today);
   const theta = parsePct(d.thetaPct, 20);
+  // The salary growth needs no income amount: it is the same growth the inkomensvoorspelling gives.
+  const salaryGrowth =
+    d.surplusIndex === 'salaris' && repaymentStart !== null ? (incomeGrowth(d, repaymentStart, today)?.growth ?? null) : undefined;
   if (
     debt === null ||
     repaymentStart === null ||
@@ -205,7 +223,8 @@ export function parseInputs(d: InputDraft, today: YearMonth): ParsedInputs | nul
     inflation === null ||
     income === null ||
     path === null ||
-    theta === null
+    theta === null ||
+    salaryGrowth === null
   ) {
     return null;
   }
@@ -220,7 +239,8 @@ export function parseInputs(d: InputDraft, today: YearMonth): ParsedInputs | nul
     inleg,
     income: path ?? null,
     inflation,
-    indexSurplus: d.indexSurplus,
+    indexSurplus: d.surplusIndex !== 'geen',
+    surplusGrowth: salaryGrowth ?? null,
     returns: { equityReturn, ter, vastrentendRate },
     mixAflossenShare: d.mixAflossenPct / 100,
     mixEquityShare: d.mixEquityPct / 100,
@@ -332,6 +352,7 @@ export function monteCarloInput(inputs: ParsedInputs, today: YearMonth, strategi
       inleg: inputs.inleg,
       inflation: inputs.inflation,
       indexSurplus: inputs.indexSurplus,
+      surplusGrowth: inputs.surplusGrowth,
       income: inputs.income,
       box3: inputs.box3,
     },

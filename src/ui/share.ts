@@ -9,7 +9,7 @@
 import { parseYearMonth, type EquityIndex, type Opleidingsniveau, type Sector, type FreedUpDestination, type StrategyKind, type VastrentendProduct } from '../engine';
 import type { Unit } from './DuelResult';
 import { parseDutchNumber } from './format';
-import { EMPTY_DRAFT, defaultTerPct, type InputDraft } from './inputs';
+import { EMPTY_DRAFT, defaultTerPct, type InputDraft, type SurplusIndex } from './inputs';
 import { HYPOTHEEK_JAREN_DEFAULT, HYPOTHEEK_JAREN_MAX, HYPOTHEEK_JAREN_MIN } from './mortgage';
 
 export interface SavedState {
@@ -154,7 +154,8 @@ const FIELDS: AnyField[] = [
   draftField('inkgroei', 'incomeGrowthPct', numberText),
   draftField('rentevast', 'constantRate', bool),
   draftField('lt', 'thetaPct', numberText),
-  draftField('surplusindex', 'indexSurplus', bool),
+  // '0'/'1' are the links from before "groeit mee met salaris" (a checkbox for inflation).
+  draftField('surplusindex', 'surplusIndex', choice<SurplusIndex>({ geen: '0', inflatie: '1', salaris: 'salaris' })),
   draftField('vrij', 'freedUpDestination', choice<FreedUpDestination>({ aandelen: 'aandelen', vastrentend: 'vastrentend' })),
   draftField('product', 'vastrentendProduct', choice<VastrentendProduct>({ deposito: 'deposito', staatsobligatie: 'obligatie' })),
   draftField('forfait', 'forfaitBlijft', bool),

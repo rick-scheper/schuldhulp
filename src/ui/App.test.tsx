@@ -123,7 +123,7 @@ describe('App', () => {
       fireEvent.click(screen.getByLabelText(/Nominaal/));
       const nominal0 = euros('eindvermogen-vastrentend');
       fireEvent.change(screen.getByLabelText(/Inflatie/), { target: { value: '0' } });
-      fireEvent.click(screen.getByLabelText(/Surplus groeit mee/)); // keep the surplus fixed
+      fireEvent.change(screen.getByLabelText(/Surplus groeit mee/), { target: { value: 'geen' } }); // keep the surplus fixed
       fireEvent.click(screen.getByLabelText(/Euro's van nu/));
       const real = euros('eindvermogen-vastrentend');
       expect(real).toBeLessThan(nominal0);

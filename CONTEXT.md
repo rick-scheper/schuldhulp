@@ -21,6 +21,7 @@
 - **Kwijtschelding** — forgiveness of the remaining debt at the end of the term.
 - **Extra aflossen** — voluntary repayment above the monthly amount (the "pay off" strategy).
 - **Surplus** — the monthly amount the user can spare on top of the required monthly payment; the money a strategy allocates.
+- **Surplusindexatie** — how the surplus grows every 12 months (Geavanceerd): with inflation (default), with the salary growth (the inkomensvoorspelling or the fixed inkomensgroei; €250 at 3.2% raise becomes €258), or not at all.
 - **Inleg** — an optional one-off amount (existing savings) allocated at the start, alongside the surplus.
 - **Vrijgekomen geld** — the part of the termijn a strategy no longer pays compared with the 0%-aflossen debt path, because extra aflossen lowered the termijn or cleared the debt. It is allocated like the surplus (so every strategy spends the same cash each month); once the debt is cleared it goes into the strategy's investment split, for 100% extra aflossen into equities unless overridden.
 - **Toetsingsinkomen** — the income DUO bases draagkracht on (roughly the verzamelinkomen).

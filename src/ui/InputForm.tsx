@@ -2,7 +2,7 @@ import { BOX3_FORFAIT_PARAMS, BOX3_WERKELIJK, DIVIDENDLEK, COLLECTIVE_LONG_TERM,
 import { formatEuro, formatInputEuro } from './format';
 import { FIELD_IDS } from './fields';
 import { box3StatusKort } from './rekenregels';
-import { defaultTerPct, pct, type IncomeOutlook, type InputDraft, type RateInfo } from './inputs';
+import { defaultTerPct, pct, type IncomeOutlook, type InputDraft, type RateInfo, type SurplusIndex } from './inputs';
 
 interface Props {
   draft: InputDraft;
@@ -293,16 +293,21 @@ export function InputForm({ draft, onChange, rateInfo, incomeOutlook }: Props) {
             </span>
           </label>
 
-          <label className="field checkbox">
-            <span>
-              <input
-                type="checkbox"
-                checked={draft.indexSurplus}
-                onChange={(e) => onChange({ ...draft, indexSurplus: e.target.checked })}
-              />{' '}
-              <span className="field-label">Surplus groeit mee met inflatie</span>
+          <label className="field">
+            <span className="field-label">Surplus groeit mee met</span>
+            <select value={draft.surplusIndex} onChange={(e) => onChange({ ...draft, surplusIndex: e.target.value as SurplusIndex })}>
+              <option value="inflatie">Inflatie</option>
+              <option value="salaris">Salaris</option>
+              <option value="geen">Niets (vast bedrag)</option>
+            </select>
+            <span className="hint">
+              {draft.surplusIndex === 'salaris'
+                ? 'Je surplus stijgt elk jaar met hetzelfde percentage als je salaris: bij 3,2% loonsverhoging wordt € 250 dus € 258. ' +
+                  'De groei volgt je inkomensvoorspelling (sector, opleiding, afstudeerjaar) of de vaste inkomensgroei die je hierboven invult.'
+                : draft.surplusIndex === 'inflatie'
+                  ? 'Je surplus stijgt elk jaar met de inflatie.'
+                  : 'Je surplus blijft elk jaar hetzelfde bedrag.'}
             </span>
-            <span className="hint">Je surplus stijgt elk jaar met de inflatie.</span>
           </label>
 
           <label className="field">

@@ -41,7 +41,7 @@ const FULL: SavedState = state(
     incomeGrowthPct: '3',
     constantRate: true,
     thetaPct: '2,5',
-    indexSurplus: false,
+    surplusIndex: 'geen',
     freedUpDestination: 'vastrentend',
     vastrentendProduct: 'staatsobligatie',
     forfaitBlijft: true,
@@ -150,6 +150,39 @@ describe('decodeState', () => {
     const bad = decodeState('v=x&schuld=500');
     expect(bad.state.draft.debt).toBe('500');
     expect(bad.unreadable).toContain('v');
+  });
+});
+
+describe('surplus indexation', () => {
+  it('reads links from before the salary option (a checkbox) as inflatie or geen', () => {
+    expect(decodeState('v=1&surplusindex=1').state.draft.surplusIndex).toBe('inflatie');
+    expect(decodeState('v=1&surplusindex=0').state.draft.surplusIndex).toBe('geen');
+  });
+
+  it('round-trips the salary option', () => {
+    const s = state({ surplusIndex: 'salaris' });
+    expect(encodeState(s)).toBe(`v=${SCHEMA_VERSION}&surplusindex=salaris`);
+    expect(decodeState(encodeState(s)).state.draft.surplusIndex).toBe('salaris');
+  });
+
+  const today = ym(2026, 11);
+  const draft = { ...EMPTY_DRAFT, debt: '30000', repaymentStart: '2027-01', surplus: '250' };
+
+  it('passes the fixed income growth to the surplus with salaris', () => {
+    const p = parseInputs({ ...draft, surplusIndex: 'salaris', incomeGrowthPct: '3,2' }, today)!;
+    expect(p.indexSurplus).toBe(true);
+    expect(p.surplusGrowth).toBeCloseTo(0.032, 12);
+  });
+
+  it('uses the inkomensvoorspelling with salaris, even without an income', () => {
+    const p = parseInputs({ ...draft, surplusIndex: 'salaris' }, today)!;
+    expect(p.income).toBeNull();
+    expect(p.surplusGrowth).toMatchObject({ firstYear: expect.any(Number), rates: expect.any(Array) });
+  });
+
+  it('leaves the surplus on inflation or fixed otherwise', () => {
+    expect(parseInputs({ ...draft, surplusIndex: 'inflatie' }, today)).toMatchObject({ indexSurplus: true, surplusGrowth: null });
+    expect(parseInputs({ ...draft, surplusIndex: 'geen' }, today)).toMatchObject({ indexSurplus: false, surplusGrowth: null });
   });
 });
 

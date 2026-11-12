@@ -8,6 +8,7 @@ import {
   type Box3Year,
   type Box3YearTax,
 } from '../tax';
+import { growthFactor, type GrowthSeries } from '../duo/draagkracht';
 import type { Market } from './market';
 import type { Strategy } from './strategy';
 
@@ -20,8 +21,14 @@ export interface PlanInput extends LoanTerms {
   inleg: number;
   /** The model's single yearly price inflation, used to index the surplus and to deflate results. */
   inflation: number;
-  /** Raise the surplus by `inflation` every 12 months. */
+  /** Raise the surplus every 12 months: by `inflation`, or by `surplusGrowth` when given. */
   indexSurplus: boolean;
+  /**
+   * The yearly growth the surplus follows when `indexSurplus` is on, instead of inflation: the
+   * user's salary growth ("surplus groeit mee met salaris"), one rate or a per-calendar-year series.
+   * Each 12 months the surplus is the start surplus times the growth from the year of `today`.
+   */
+  surplusGrowth?: number | GrowthSeries | null;
   /**
    * Box 3 (#7, #23, #24): the eindvermogen is after tax when given. Null or absent leaves the pots
    * untaxed (pre-tax results, used by tests that check the cash flows on their own).
@@ -274,7 +281,12 @@ function run(
     const interest = m.interest;
 
     // Allocation: every strategy spends the reference termijn + surplus (+ inleg).
-    if (p.indexSurplus && i > 0 && i % 12 === 0) surplus = p.surplus * Math.pow(1 + p.inflation, i / 12);
+    if (p.indexSurplus && i > 0 && i % 12 === 0) {
+      surplus =
+        p.surplusGrowth != null
+          ? p.surplus * growthFactor(p.surplusGrowth, p.today.year, p.today.year + i / 12)
+          : p.surplus * Math.pow(1 + p.inflation, i / 12);
+    }
     const budget = (ref[i] ?? 0) + surplus + (i === 0 ? p.inleg : 0);
     let allocatable = Math.max(0, budget - termijnPaid);
     // Box 3 tax the pots could not pay comes first (a negative arrear is a saving added to the money).

@@ -149,6 +149,27 @@ describe('simulateStrategy', () => {
     expect(r.trace![419]!.invested).toBeCloseTo(200 * Math.pow(1.02, 34), 9);
   });
 
+  it('indexes the surplus to the salary growth instead of inflation when given', () => {
+    const r = simulateStrategy({ ...plan, indexSurplus: true, surplusGrowth: 0.032 }, VASTRENTEND_STRATEGY, market, { trace: true });
+    expect(r.trace![11]!.invested).toBeCloseTo(200, 9);
+    expect(r.trace![12]!.invested).toBeCloseTo(200 + 200 * 0.032, 9);
+    expect(r.trace![24]!.invested).toBeCloseTo(200 * 1.032 * 1.032, 9);
+  });
+
+  it('follows a per-year salary growth series', () => {
+    const y0 = plan.today.year;
+    const surplusGrowth = { firstYear: y0 + 1, rates: [0.05, 0.03], rest: 0.02 };
+    const r = simulateStrategy({ ...plan, indexSurplus: true, surplusGrowth }, VASTRENTEND_STRATEGY, market, { trace: true });
+    expect(r.trace![12]!.invested).toBeCloseTo(200 * 1.05, 9);
+    expect(r.trace![24]!.invested).toBeCloseTo(200 * 1.05 * 1.03, 9);
+    expect(r.trace![36]!.invested).toBeCloseTo(200 * 1.05 * 1.03 * 1.02, 9);
+  });
+
+  it('ignores the salary growth when indexing is off', () => {
+    const r = simulateStrategy({ ...plan, indexSurplus: false, surplusGrowth: 0.032 }, VASTRENTEND_STRATEGY, market, { trace: true });
+    expect(r.trace![12]!.invested).toBeCloseTo(200, 9);
+  });
+
   it('deflates the eindvermogen to euro\'s van nu with the single inflation assumption', () => {
     const r = simulateStrategy({ ...plan, inflation: 0.03 }, VASTRENTEND_STRATEGY, market);
     expect(r.eindvermogenReal).toBeCloseTo(r.eindvermogenNominal / Math.pow(1.03, 35), 6);
