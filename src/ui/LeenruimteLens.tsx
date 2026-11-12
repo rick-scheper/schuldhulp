@@ -20,8 +20,6 @@ interface Props {
   unit: Unit;
   /** Null without an income: the lens then asks for one. */
   ctx: Omit<LeenruimteContext, 'unit'> | null;
-  /** Default savings: the inleg, if any. */
-  inleg: number;
   /** Default buying moment, in years from now (the Huis lens' hypotheekmoment). */
   jaren: number;
   surplus: number;
@@ -31,11 +29,11 @@ const pct = (r: number) => `${(r * 100).toLocaleString('nl-NL', { minimumFractio
 
 /**
  * The Leenruimte lens: the maximum mortgage per buying year over the term, with and without the
- * studieschuld, what strategies change about it, and what Y euro of savings does as eigen inbreng
- * or as a DUO payoff. A visualization; see docs/research/borrowing-capacity-strategies.md.
+ * studieschuld, what strategies change about it, and what the savings (the invested pot at that
+ * year plus Y euro extra) do as eigen inbreng or as a DUO payoff. A visualization; see docs/research/borrowing-capacity-strategies.md.
  */
-export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }: Props) {
-  const [s, setS] = useState<LeenruimteSettings>(() => ({ ...DEFAULT_LEENRUIMTE, spaargeld: inleg > 0 ? inleg : 10_000 }));
+export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props) {
+  const [s, setS] = useState<LeenruimteSettings>(DEFAULT_LEENRUIMTE);
   const [spaarDraft, setSpaarDraft] = useState(() => String(s.spaargeld));
   const [partnerDraft, setPartnerDraft] = useState('');
   const [index, setIndex] = useState(() => Math.min(c.points.length - 1, Math.max(0, Math.round(jaren))));
@@ -75,11 +73,11 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
             </p>
             <p>
               Spaargeld verhoogt je hypotheek niet, maar je kunt er wel duurder mee kopen: de bank leent hooguit de waarde van het huis, en de
-              kosten koper betaal je zelf.
+              kosten koper betaal je zelf. Wat je belegt (je inleg en surplus in aandelen) telt als je spaargeld in het jaar dat je koopt.
             </p>
             <p className="hint">
-              Leennormen en grenzen van 2026, voor latere jaren meegegroeid met de inflatie; je spaargeld is in euro's van nu en je partner
-              groeit mee met jouw inkomen. Kosten koper geschat op{' '}
+              Leennormen en grenzen van 2026, voor latere jaren meegegroeid met de inflatie; je extra spaargeld is in euro's van nu en je
+              partner groeit mee met jouw inkomen. Je belegde pot is het rekenvoorbeeld van 100% aandelen, zonder de belasting bij verkoop. Kosten koper geschat op{' '}
               {formatAmount(LEENRUIMTE_REGELS.overigeKostenKoper)} plus overdrachtsbelasting en NHG-premie. Geen advies.
             </p>
           </>
@@ -118,11 +116,11 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
         </label>
         <div className="leenruimte-fields">
           <label>
-            <span>Spaargeld</span>
+            <span>Extra spaargeld</span>
             <input
               inputMode="decimal"
               value={spaarDraft}
-              aria-label="Spaargeld"
+              aria-label="Extra spaargeld"
               onChange={(e) => {
                 setSpaarDraft(e.target.value);
                 const v = parseDutchNumber(e.target.value);
@@ -167,6 +165,10 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
         </div>
         <div className="leenruimte-checks">
           <label>
+            <input type="checkbox" checked={s.potMeetellen} onChange={(e) => set({ potMeetellen: e.target.checked })} /> Belegde pot
+            meetellen als spaargeld
+          </label>
+          <label>
             <input type="checkbox" checked={s.starter} onChange={(e) => set({ starter: e.target.checked })} /> Starter onder 35 (geen
             overdrachtsbelasting tot {formatInputEuro(LEENRUIMTE_REGELS.startersGrens)})
           </label>
@@ -194,17 +196,22 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
           <dd data-testid="leenruimte-duo">{formatAmount(-p.duoVerlaging)}</dd>
         </div>
         <div className="kpi">
-          <dt>Huis met {formatInputEuro(s.spaargeld)} spaargeld</dt>
-          <dd data-testid="leenruimte-koopsom">{p.koopsomInbreng.tekort ? '—' : formatAmount(p.koopsomInbreng.prijs)}</dd>
+          <dt>Spaargeld eind {p.year}</dt>
+          <dd data-testid="leenruimte-spaargeld">{formatAmount(p.spaargeld)}</dd>
+          {p.pot > 0 && s.spaargeld > 0 && (
+            <dd className="kpi-sub" data-testid="leenruimte-spaargeld-opbouw">
+              {formatAmount(p.pot)} belegd + {formatInputEuro(s.spaargeld)} extra
+            </dd>
+          )}
         </div>
         <div className="kpi">
-          <dt>Kosten koper</dt>
-          <dd>{formatAmount(p.koopsomInbreng.kostenKoper)}</dd>
+          <dt>Hoogste koopsom</dt>
+          <dd data-testid="leenruimte-koopsom">{p.koopsomInbreng.tekort ? '—' : formatAmount(p.koopsomInbreng.prijs)}</dd>
         </div>
       </dl>
       {p.koopsomInbreng.tekort && (
         <p className="callout" data-testid="leenruimte-tekort">
-          Met {formatInputEuro(s.spaargeld)} spaargeld kun je de kosten koper (ongeveer {formatAmount(p.koopsomInbreng.kostenKoper)}) niet
+          Met {formatAmount(p.spaargeld)} spaargeld kun je de kosten koper (ongeveer {formatAmount(p.koopsomInbreng.kostenKoper)}) niet
           betalen. Een bank leent hooguit de waarde van het huis.
         </p>
       )}
@@ -213,8 +220,8 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
         uitleg={
           <>
             <p>
-              Stel: je hebt nog {formatAmount(p.restschuld)}{' '}
-              studieschuld en {formatInputEuro(s.spaargeld)} gespaard. Wat levert het meeste huis op?
+              Eind {p.year} heb je nog {formatAmount(p.restschuld)} studieschuld en {formatAmount(p.spaargeld)} spaargeld
+              {p.pot > 0 ? ` (waarvan ${formatAmount(p.pot)} belegd)` : ''}. Wat levert het meeste huis op?
             </p>
             <p>
               <strong>Groen:</strong> je houdt je spaargeld als eigen inbreng; na de kosten koper gaat elke euro naar de koopsom.
@@ -231,11 +238,15 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
                   : `Eind ${p.year} levert je spaargeld als eigen inbreng ${formatAmount(p.koopsomInbreng.prijs - p.koopsomDuo.prijs)} meer huis op.`}{' '}
               Hoe korter de looptijd van je studieschuld nog is, hoe meer aflossen oplevert.
             </p>
-            <p className="hint">Je spaargeld blijft in elk jaar even groot; dit is een rekenvoorbeeld, geen planning.</p>
+            <p className="hint">
+              {s.potMeetellen
+                ? 'Je belegde pot groeit elk jaar met je surplus en rendement; je extra spaargeld blijft even groot. Een rekenvoorbeeld, geen planning.'
+                : 'Je spaargeld blijft in elk jaar even groot; dit is een rekenvoorbeeld, geen planning.'}
+            </p>
           </>
         }
       >
-        <h2 className="lens-title">Wat kun je kopen met {formatInputEuro(s.spaargeld)} spaargeld?</h2>
+        <h2 className="lens-title">Wat kun je kopen met je spaargeld?</h2>
         <LineChart
           label="Hoogste koopsom per jaar: spaargeld als eigen inbreng of eerst naar DUO"
           years={years}
@@ -248,7 +259,7 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
             const q = points[k]!;
             return q.koopsomInbreng.tekort
               ? `Eind ${q.year}: je spaargeld dekt de kosten koper niet.`
-              : `Eind ${q.year}: hypotheek ${formatAmount(q.koopsomInbreng.hypotheek)}${q.koopsomInbreng.starterslening > 0 ? ` + Starterslening ${formatAmount(q.koopsomInbreng.starterslening)}` : ''} + eigen inbreng ${formatAmount(q.koopsomInbreng.eigenInbreng)}; kosten koper ${formatAmount(q.koopsomInbreng.kostenKoper)}.`;
+              : `Eind ${q.year}: spaargeld ${formatAmount(q.spaargeld)}; hypotheek ${formatAmount(q.koopsomInbreng.hypotheek)}${q.koopsomInbreng.starterslening > 0 ? ` + Starterslening ${formatAmount(q.koopsomInbreng.starterslening)}` : ''} + eigen inbreng ${formatAmount(q.koopsomInbreng.eigenInbreng)}; kosten koper ${formatAmount(q.koopsomInbreng.kostenKoper)}.`;
           }}
         />
       </LensLayout>
@@ -258,7 +269,7 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, inleg, jaren, surplus }:
         <h2 className="lens-title">Wat verandert je koopsom?</h2>
         <p className="hint">
           Elke regel verandert één ding ten opzichte van wat je hierboven hebt ingesteld; de rest blijft gelijk. Extra aflossen gaat uit van je
-          surplus van {formatInputEuro(surplus)} per maand.
+          surplus van {formatInputEuro(surplus)} per maand{s.potMeetellen ? ', in plaats van het te beleggen' : ''}.
         </p>
         <ul className="effects">
           {effects.map((e) => {

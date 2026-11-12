@@ -243,7 +243,6 @@ export function App({ today = currentMonth(), initialDraft, monteCarlo }: Props)
                 cockpit={cockpit}
                 unit={unit}
                 ctx={plan?.income ? { income: plan.income, baseYear: today.year, inflation: plan.inflation } : null}
-                inleg={inputs.inleg}
                 jaren={hypotheekJaren}
                 surplus={inputs.surplus}
               />

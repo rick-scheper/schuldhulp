@@ -46,6 +46,10 @@ export interface CockpitPoint {
   debtNominal: number;
   /** Debt with 100% extra aflossen, nominal. */
   debtAflossenNominal: number;
+  /** Pot of 100% aandelen, nominal. */
+  potAandelenNominal: number;
+  /** Pot of 100% extra aflossen, nominal. */
+  potAflossenNominal: number;
 }
 
 export interface Cockpit {
@@ -116,6 +120,8 @@ export function buildCockpit(
         duoRate: rateAt(i),
         debtNominal: s.balanceAfter,
         debtAflossenNominal: Math.max(0, a.balanceAfter),
+        potAandelenNominal: e.equityPot + e.vastrentendPot,
+        potAflossenNominal: a.equityPot + a.vastrentendPot,
       });
     }
   }

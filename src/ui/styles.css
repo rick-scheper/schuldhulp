@@ -283,6 +283,7 @@ button.strip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .kpi dt { color: var(--text-muted); font-size: 0.85rem; }
 .kpi dd { margin: 2px 0 0; font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .kpi.forgiven dd { color: var(--win); }
+.kpi dd.kpi-sub { font-size: 0.8rem; font-weight: 400; color: var(--text-muted); }
 .what-if { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 14px 20px; }
 .slider { display: flex; flex-direction: column; gap: 6px; }
 .slider input { width: 100%; }

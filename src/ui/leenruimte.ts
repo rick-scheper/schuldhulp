@@ -22,7 +22,12 @@ export interface LeenruimteSettings extends KoopsomOptions {
   /** Rentevaste periode under 10 years: the toetsrente is at least 5% (Trhk art. 3 lid 9–10). */
   korteRentevast: boolean;
   label: EnergieLabel;
-  /** Savings Y in euro's van nu, the same at every buying year: a what-if, not projected. */
+  /**
+   * Count the invested pot (100% aandelen: inleg plus surplus, at the buying year) as savings.
+   * It is the first part of the spaargeld; `spaargeld` comes on top.
+   */
+  potMeetellen: boolean;
+  /** Extra savings Y in euro's van nu on top of the pot, the same at every buying year: a what-if, not projected. */
   spaargeld: number;
 }
 
@@ -31,6 +36,7 @@ export const DEFAULT_LEENRUIMTE: LeenruimteSettings = {
   toetsrente: 0.04,
   korteRentevast: false,
   label: 'AB',
+  potMeetellen: true,
   spaargeld: 0,
   starter: true,
   nhg: true,
@@ -55,6 +61,10 @@ export interface LeenruimtePoint {
   income: number;
   /** DUO debt left, paying only the termijn. */
   restschuld: number;
+  /** The invested pot counted as savings (0 when not counted). */
+  pot: number;
+  /** All savings: pot plus the extra spaargeld. */
+  spaargeld: number;
   /** Max mortgage without a studieschuld. */
   zonderSchuld: number;
   /** Max mortgage with the DUO termijn of paying only the termijn. */
@@ -101,11 +111,15 @@ export function leenruimteAt(p: CockpitPoint, s: LeenruimteSettings, ctx: Leenru
   const at = (debt: number) => leenruimte({ income: income * d, partnerIncome: partnerIncome * d, toetsrente: r, duoTermijn: termijn(debt), label: s.label });
   const met = at(p.debtNominal);
   const aflossen = at(p.debtAflossenNominal);
-  const inbreng = maxKoopsom(met.max, s.spaargeld, s);
+  // The pot is the first part of the savings: what investing the inleg and surplus (paying only
+  // the termijn, like `met`) has grown to by the buying year. Before the tax on selling.
+  const potNu = s.potMeetellen ? p.potAandelenNominal * d : 0;
+  const spaargeld = potNu + s.spaargeld;
+  const inbreng = maxKoopsom(met.max, spaargeld, s);
   // Pay off what the savings can spare after the kosten koper of the eigen-inbreng purchase.
-  const duoAfgelostNu = Math.min(p.debtNominal * d, Math.max(0, s.spaargeld - inbreng.kostenKoper));
+  const duoAfgelostNu = Math.min(p.debtNominal * d, Math.max(0, spaargeld - inbreng.kostenKoper));
   const naAflossen = at(p.debtNominal - duoAfgelostNu / d);
-  const duo = maxKoopsom(naAflossen.max, s.spaargeld - duoAfgelostNu, s);
+  const duo = maxKoopsom(naAflossen.max, spaargeld - duoAfgelostNu, s);
   // From euro's van nu to the display unit.
   const f = ctx.unit === 'real' ? 1 : 1 / d;
   const duoAfgelost = duoAfgelostNu;
@@ -113,6 +127,8 @@ export function leenruimteAt(p: CockpitPoint, s: LeenruimteSettings, ctx: Leenru
     year: p.year,
     income: income * d * f,
     restschuld: p.debtNominal * d * f,
+    pot: potNu * f,
+    spaargeld: spaargeld * f,
     zonderSchuld: met.maxZonderSchuld * f,
     metSchuld: met.max * f,
     metAflossen: aflossen.max * f,
@@ -147,9 +163,10 @@ export function strategyEffects(c: Cockpit, index: number, s: LeenruimteSettings
   const effects: StrategyEffect[] = [];
   const noDebt = leenruimteAt({ ...p, debtNominal: 0 }, s, ctx);
   effects.push({ key: 'geen-schuld', label: 'Zonder studieschuld', delta: price(noDebt) - price(base) });
-  const aflossen = leenruimteAt({ ...p, debtNominal: p.debtAflossenNominal }, s, ctx);
+  // Extra aflossen spends the surplus at DUO, so its pot (if counted) is the aflossen pot.
+  const aflossen = leenruimteAt({ ...p, debtNominal: p.debtAflossenNominal, potAandelenNominal: p.potAflossenNominal }, s, ctx);
   effects.push({ key: 'aflossen', label: 'Je surplus tot dan naar extra aflossen', delta: price(aflossen) - price(base) });
-  if (s.spaargeld > 0) {
+  if (base.spaargeld > 0) {
     effects.push({ key: 'spaargeld-duo', label: 'Spaargeld eerst bij DUO aflossen', delta: base.koopsomDuo.prijs - price(base) });
   }
   if (s.partnerIncome <= 0) {

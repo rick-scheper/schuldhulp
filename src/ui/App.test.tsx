@@ -780,11 +780,22 @@ describe('cockpit', () => {
     expect(amount('leenruimte-max')).toBeLessThan(205_000);
     expect(text('leenruimte-duo')).toMatch(/^[−-]/);
     expect(amount('leenruimte-duo')).toBeGreaterThan(20_000);
+    // End 2027: twelve months of €200 invested is the spaargeld; too little for the kosten koper.
+    expect(amount('leenruimte-spaargeld')).toBeGreaterThan(2_000);
+    expect(amount('leenruimte-spaargeld')).toBeLessThan(3_000);
+    expect(screen.getByTestId('leenruimte-tekort')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Extra spaargeld'), { target: { value: '40.000' } });
+    expect(text('leenruimte-spaargeld-opbouw')).toMatch(/belegd \+ € 40\.000 extra/);
     const koopsom = amount('leenruimte-koopsom');
-    fireEvent.change(screen.getByLabelText('Spaargeld'), { target: { value: '40.000' } });
-    expect(amount('leenruimte-koopsom')).toBeGreaterThan(koopsom + 25_000);
+    expect(koopsom).toBeGreaterThan(200_000);
     expect(screen.getByTestId('effect-geen-schuld').textContent).toMatch(/\+/);
-    fireEvent.change(screen.getByLabelText('Spaargeld'), { target: { value: '0' } });
+    // The invested pot grows with the buying year.
+    const spaargeld0 = amount('leenruimte-spaargeld');
+    fireEvent.change(screen.getByLabelText('Jaar waarin je koopt'), { target: { value: '5' } });
+    expect(amount('leenruimte-spaargeld')).toBeGreaterThan(spaargeld0 + 10_000);
+    fireEvent.click(screen.getByLabelText(/Belegde pot meetellen/));
+    expect(amount('leenruimte-spaargeld')).toBe(40_000);
+    fireEvent.change(screen.getByLabelText('Extra spaargeld'), { target: { value: '0' } });
     expect(screen.getByTestId('leenruimte-tekort')).toBeTruthy();
   });
 
