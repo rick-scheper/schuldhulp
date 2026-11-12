@@ -1,5 +1,5 @@
 import { ym, addMonths } from '../time';
-import { buildConstantRateSchedule, SF35_TERM_MONTHS } from './schedule';
+import { buildDuoSchedule, SF35_TERM_MONTHS } from './schedule';
 import { SF35_DRAAGKRACHT } from './draagkracht';
 import { loadRekenhulpFixtures } from './fixtures/rekenhulp';
 
@@ -18,7 +18,7 @@ describe('DUO rekenhulp cases (#16 b)', () => {
     it(`${f.id}: ${f.description}`, () => {
       const repaymentStart = ym(2027, 1);
       const today = addMonths(repaymentStart, SF35_TERM_MONTHS - f.input.remainingMonths);
-      const s = buildConstantRateSchedule({
+      const s = buildDuoSchedule({
         debt: f.input.debt,
         annualRate: f.input.annualRatePct / 100,
         repaymentStart,

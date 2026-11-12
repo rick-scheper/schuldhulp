@@ -6,7 +6,15 @@ import {
   DEFAULT_INFLATION,
   DEFAULT_VASTRENTEND_RATE,
   EQUITY_INDICES,
+  addMonths,
+  buildRentepad,
+  currentRatePeriod,
+  defaultCurrentRate,
+  expectedYieldSeries,
   parseYearMonth,
+  SF35_TERM_MONTHS,
+  type RatePeriod,
+  type RatePeriodKind,
   type EquityIndex,
   type FreedUpDestination,
   type IncomePath,
@@ -19,7 +27,10 @@ export interface InputDraft {
   debt: string;
   repaymentStart: string;
   surplus: string;
+  /** Current DUO rate; empty = pre-filled from the published SF35 rate for the period's start year. */
   ratePct: string;
+  /** Last year of the current rentevaste periode; empty = derived from the start of the aanloopfase. */
+  periodEndYear: string;
   inleg: string;
   /** Gross yearly income (≈ toetsingsinkomen); empty = no draagkracht. */
   income: string;
@@ -34,12 +45,11 @@ export interface InputDraft {
   terPct: string;
   inflationPct: string;
   incomeGrowthPct: string;
+  /** "Rente blijft gelijk": every rentevaste periode keeps the current rate. */
+  constantRate: boolean;
   indexSurplus: boolean;
   freedUpDestination: FreedUpDestination;
 }
-
-/** Latest published SF35 rate (2027, DUO). Pre-filling per rentevaste periode comes with #22. */
-export const DEFAULT_RATE_PCT = '2,70';
 
 /** A yearly fraction as a Dutch percentage string: 0.0007 → "0,07". */
 export function pct(fraction: number, decimals = 1): string {
@@ -54,7 +64,8 @@ export const EMPTY_DRAFT: InputDraft = {
   debt: '',
   repaymentStart: '',
   surplus: '',
-  ratePct: DEFAULT_RATE_PCT,
+  ratePct: '',
+  periodEndYear: '',
   inleg: '',
   income: '',
   equityIndex: DEFAULT_EQUITY_INDEX,
@@ -65,6 +76,7 @@ export const EMPTY_DRAFT: InputDraft = {
   terPct: defaultTerPct(DEFAULT_EQUITY_INDEX),
   inflationPct: pct(DEFAULT_INFLATION),
   incomeGrowthPct: pct(DEFAULT_INCOME_GROWTH),
+  constantRate: false,
   indexSurplus: true,
   freedUpDestination: 'aandelen',
 };
@@ -73,7 +85,11 @@ export interface ParsedInputs {
   debt: number;
   repaymentStart: YearMonth;
   surplus: number;
-  annualRate: number;
+  /** Null = use the pre-filled rate for the current period. */
+  currentRate: number | null;
+  /** Null = derived from the start of the aanloopfase. */
+  currentPeriodEndYear: number | null;
+  constantRate: boolean;
   inleg: number;
   /** Null when no income was entered: no draagkracht cap. */
   income: IncomePath | null;
@@ -95,7 +111,9 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
   const debt = parseDutchNumber(d.debt);
   const repaymentStart = parseYearMonth(d.repaymentStart);
   const surplus = parseDutchNumber(d.surplus);
-  const annualRate = parsePct(d.ratePct, 20);
+  const currentRate = d.ratePct.trim() === '' ? undefined : parsePct(d.ratePct, 20);
+  const periodEnd = d.periodEndYear.trim();
+  const currentPeriodEndYear = periodEnd === '' ? undefined : /^\d{4}$/.test(periodEnd) ? Number(periodEnd) : null;
   const inleg = d.inleg.trim() === '' ? 0 : parseDutchNumber(d.inleg);
   const vastrentendRate = parsePct(d.vastrentendPct, 20);
   const equityReturn = parsePct(d.equityReturnPct, 30);
@@ -107,7 +125,8 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     debt === null ||
     repaymentStart === null ||
     surplus === null ||
-    annualRate === null ||
+    currentRate === null ||
+    currentPeriodEndYear === null ||
     inleg === null ||
     vastrentendRate === null ||
     equityReturn === null ||
@@ -122,7 +141,9 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     debt,
     repaymentStart,
     surplus,
-    annualRate,
+    currentRate: currentRate ?? null,
+    currentPeriodEndYear: currentPeriodEndYear ?? null,
+    constantRate: d.constantRate,
     inleg,
     income: income === undefined ? null : { income, growth: incomeGrowth },
     inflation,
@@ -132,4 +153,57 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     mixEquityShare: d.mixEquityPct / 100,
     freedUpDestination: d.freedUpDestination,
   };
+}
+
+/** What the form shows about the current rate, from the start of the terugbetaalfase alone. */
+export interface RateInfo {
+  kind: RatePeriodKind;
+  startYear: number;
+  endYear: number;
+  /** The pre-filled current rate as a Dutch percentage ("2,57"), or null when unknown. */
+  defaultRatePct: string | null;
+}
+
+/** Null until a valid start of the terugbetaalfase is entered. */
+export function rateInfo(d: InputDraft, today: YearMonth): RateInfo | null {
+  const repaymentStart = parseYearMonth(d.repaymentStart);
+  if (!repaymentStart) return null;
+  const end = d.periodEndYear.trim();
+  let currentPeriodEndYear = /^\d{4}$/.test(end) ? Number(end) : null;
+  try {
+    currentRatePeriod({ today, repaymentStart, currentPeriodEndYear });
+  } catch {
+    currentPeriodEndYear = null; // resolveRate reports the invalid year
+  }
+  const period = currentRatePeriod({ today, repaymentStart, currentPeriodEndYear });
+  const rate = defaultCurrentRate({ today, repaymentStart, currentPeriodEndYear, yields: expectedYieldSeries(today) });
+  return { ...period, defaultRatePct: rate === null ? null : pct(rate, 2) };
+}
+
+export type RateResolution =
+  | { ok: true; annualRate: number; rentepad: Float64Array; periods: RatePeriod[] }
+  | { ok: false; message: string };
+
+/**
+ * The rentepad for the parsed inputs: the current rate, then each new period's rate from the
+ * rate rule on the expected (σ = 0) yield path, or the current rate with "rente blijft gelijk".
+ */
+export function resolveRate(inputs: ParsedInputs, today: YearMonth): RateResolution {
+  const end = addMonths(inputs.repaymentStart, SF35_TERM_MONTHS - 1);
+  try {
+    const pad = buildRentepad({
+      today,
+      repaymentStart: inputs.repaymentStart,
+      currentRate: inputs.currentRate,
+      currentPeriodEndYear: inputs.currentPeriodEndYear,
+      constant: inputs.constantRate,
+      yields: expectedYieldSeries({ year: end.year, month: 12 }),
+    });
+    return { ok: true, annualRate: pad.rates[0] ?? pad.periods[0]!.rate, rentepad: pad.rates, periods: pad.periods };
+  } catch (e) {
+    if (e instanceof RangeError) {
+      return { ok: false, message: `Vul als einde van je rentevaste periode een jaar van ${today.year} tot en met ${today.year + 4} in.` };
+    }
+    return { ok: false, message: 'Vul je huidige DUO-rente in; voor het startjaar van je rentevaste periode is geen SF35-rente bekend.' };
+  }
 }

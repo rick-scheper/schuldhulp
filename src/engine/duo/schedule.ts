@@ -3,7 +3,7 @@ import { createLoan, gridMonths, SF35_TERM_MONTHS, type LoanTerms, type Recalcul
 
 export { isRecalculationYear, SF35_TERM_MONTHS, type Recalculation, type RecalculationKind } from './loan';
 
-export type ConstantRateScheduleInput = LoanTerms;
+export type DuoScheduleInput = LoanTerms;
 
 export interface ScheduleMonth {
   month: YearMonth;
@@ -22,7 +22,7 @@ export interface ScheduleMonth {
   balanceAfter: number;
 }
 
-export interface ConstantRateSchedule {
+export interface DuoSchedule {
   months: ScheduleMonth[];
   recalculations: Recalculation[];
   /** The wettelijk maandbedrag in force in the first simulated month. */
@@ -43,19 +43,21 @@ export interface ConstantRateSchedule {
 }
 
 /**
- * The DUO schedule at a constant rate, from `today` to the end of the term: the 0%-aflossen
- * debt path.
+ * The DUO schedule from `today` to the end of the term: the 0%-aflossen debt path, at a
+ * constant rate or along a rentepad (`input.rentepad`, see rate/rentepad.ts).
  *
  * - Before the terugbetaalfase, interest accrues monthly until `repaymentStart`.
  * - The wettelijk maandbedrag is set in the first simulated month from the current debt over the
  *   months left, and recalculated at the start of repayment years 1, 4, 9, …, 34.
  *   Starting mid-period, DUO's actual amount was set at the last recalculation point; at a
  *   constant rate with no extra payments that amount equals the annuity on today's debt.
+ * - Along a rentepad the rate changes on 1 January of a new period; the rentevaste periodes
+ *   line up with repayment years 4, 9, …, so the new rate enters at a statutory recalculation.
  * - With an income, draagkracht caps the termijn (art. 6.10), and after a capped year the
  *   wettelijk maandbedrag is recalculated on 1 January (art. 6.15).
  * - Whatever is left after the last month is the kwijtgescholden bedrag.
  */
-export function buildConstantRateSchedule(input: ConstantRateScheduleInput): ConstantRateSchedule {
+export function buildDuoSchedule(input: DuoScheduleInput): DuoSchedule {
   const termMonths = input.termMonths ?? SF35_TERM_MONTHS;
   const endMonth = addMonths(input.repaymentStart, termMonths - 1);
   const loan = createLoan(input);

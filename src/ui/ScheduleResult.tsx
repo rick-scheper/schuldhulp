@@ -1,9 +1,27 @@
-import type { ConstantRateSchedule, RecalculationKind } from '../engine';
+import type { DuoSchedule, RateOrigin, RatePeriod, RecalculationKind } from '../engine';
 import { formatEuro, formatMonthLong } from './format';
+import { pct } from './inputs';
 
-const KIND_TAGS: Partial<Record<RecalculationKind, string>> = { start: 'nu', draagkracht: 'na draagkracht' };
+const KIND_TAGS: Partial<Record<RecalculationKind, string>> = {
+  start: 'nu',
+  draagkracht: 'na draagkracht',
+  rente: 'nieuwe rente',
+};
 
-export function ScheduleResult({ schedule }: { schedule: ConstantRateSchedule }) {
+const ORIGIN_LABELS: Record<RateOrigin, string> = {
+  huidig: 'je huidige rente',
+  gepubliceerd: 'gepubliceerd door DUO',
+  rentepad: 'verwacht, uit de 5-jaarsrente',
+  gelijk: 'rente blijft gelijk',
+};
+
+interface Props {
+  schedule: DuoSchedule;
+  periods: RatePeriod[];
+  constantRate: boolean;
+}
+
+export function ScheduleResult({ schedule, periods, constantRate }: Props) {
   return (
     <section className="card result" aria-label="Uitkomst">
       <dl className="stats">
@@ -33,13 +51,41 @@ export function ScheduleResult({ schedule }: { schedule: ConstantRateSchedule })
         </div>
       </dl>
 
+      <h2>Rentevaste periodes</h2>
+      <p className="hint">
+        Zolang je studeert verandert je DUO-rente elk jaar. Vanaf je aanloopfase staat hij steeds 5 jaar vast; elke
+        nieuwe periode krijgt de rente van haar eerste jaar: het gemiddelde van de 5-jaarsrente op staatsobligaties van
+        oktober twee jaar eerder tot en met september het jaar ervoor, afgerond op 2 decimalen en nooit onder 0%.
+        {constantRate ? ' Je rekent met "rente blijft gelijk".' : ' Na 2027 is dat een verwachting zonder spreiding.'}
+      </p>
+      <div className="table-wrap">
+        <table data-testid="rate-periods">
+          <thead>
+            <tr>
+              <th>Jaren</th>
+              <th className="num">DUO-rente</th>
+              <th>Bron</th>
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map((p) => (
+              <tr key={p.startYear}>
+                <td>{p.startYear === p.endYear ? p.startYear : `${p.startYear}–${p.endYear}`}</td>
+                <td className="num">{pct(p.rate, 2)}%</td>
+                <td>{ORIGIN_LABELS[p.origin]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       <h2>Herberekeningen van het maandbedrag</h2>
       <p className="hint">
         DUO berekent het wettelijk maandbedrag opnieuw in aflosjaar 1 en 4 en daarna elke 5 jaar, over de maanden die
         dan nog over zijn. Betaalde je door je draagkracht een jaar minder, dan rekent DUO het op 1 januari opnieuw uit.
       </p>
       <div className="table-wrap">
-        <table>
+        <table data-testid="recalculations">
           <thead>
             <tr>
               <th>Aflosjaar</th>

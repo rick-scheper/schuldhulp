@@ -1,0 +1,16 @@
+{
+  "id": "check-a",
+  "description": "#16 check (a): the DUO rate rule fed the daily DSTA-derived 5-year yield reproduces DUO's published SF35 rates for 2023–2027",
+  "series": "daily-5y.csv",
+  "expected": {
+    "2023": 0.46,
+    "2024": 2.56,
+    "2025": 2.57,
+    "2026": 2.33,
+    "2027": 2.70
+  },
+  "tolerancePp": 0.01,
+  "source": "Yields: DSTA, 'Yields on DSLs from 2010 onwards' (MTS daily fixings, ODS, publication 02-11-2026), https://english.dsta.nl/site/binaries/site-content/collections/documents/2026/11/02/yields-on-dsls-from-2010-onwards/mts-fixings-publicatie.ods (sha256 293a70c05bc9cffb131ec63f8e3c3ed8ebfb1755885321c409b76bd3b38cd2d6). Expected rates: DUO, 'Overzicht rentepercentages', https://duo.nl/particulier/rente/rente-voor-terugbetalers.jsp",
+  "retrieved": "2026-11-12",
+  "derivation": "daily-5y.csv is derived by derive.py with the method in docs/research/projection-data.md §1.2: for each fixing day, DSLs with a zero price or less than 3 months to maturity are dropped, remaining term = (maturity − date) / 365.25 years, and the mid yield is linearly interpolated to 5.0 years between the nearest bond at or below 5 years and the nearest above. Days without a bond on both sides are skipped (28–29 Dec 2021–2023). The rule averages the daily values Oct(Y−2)–Sep(Y−1) with equal weight. Unrounded results: 0.461, 2.564, 2.569, 2.336, 2.713 — 2026 and 2027 round to 2.34 and 2.71, within the ±0.01 pp tolerance; DUO's exact bond selection is not published."
+}

@@ -1,14 +1,16 @@
 import { EQUITY_INDICES, type EquityIndex, type FreedUpDestination } from '../engine';
-import { defaultTerPct, type InputDraft } from './inputs';
+import { defaultTerPct, type InputDraft, type RateInfo } from './inputs';
 
 interface Props {
   draft: InputDraft;
   onChange: (draft: InputDraft) => void;
+  /** The current rate period and its pre-filled rate; null until the start of the terugbetaalfase is valid. */
+  rateInfo: RateInfo | null;
 }
 
 type StringKey = { [K in keyof InputDraft]: InputDraft[K] extends string ? K : never }[keyof InputDraft];
 
-export function InputForm({ draft, onChange }: Props) {
+export function InputForm({ draft, onChange, rateInfo }: Props) {
   const set = (key: StringKey) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     onChange({ ...draft, [key]: e.target.value });
 
@@ -68,13 +70,36 @@ export function InputForm({ draft, onChange }: Props) {
         </label>
 
         <label className="field">
-          <span className="field-label">DUO-rente</span>
+          <span className="field-label">Huidige DUO-rente</span>
           <span className="input-wrap">
-            <input inputMode="decimal" value={draft.ratePct} onChange={set('ratePct')} />
+            <input
+              inputMode="decimal"
+              placeholder={rateInfo?.defaultRatePct ?? ''}
+              value={draft.ratePct}
+              onChange={set('ratePct')}
+            />
             <span className="affix">%</span>
           </span>
-          <span className="hint">Blijft in deze versie gelijk over de hele resterende looptijd.</span>
+          <span className="hint" data-testid="rate-hint">
+            {rateHint(rateInfo)}
+          </span>
         </label>
+
+        {rateInfo?.kind !== 'jaar' && (
+          <label className="field">
+            <span className="field-label">Einde rentevaste periode</span>
+            <input
+              inputMode="numeric"
+              placeholder={rateInfo ? String(rateInfo.endYear) : 'jaar'}
+              value={draft.periodEndYear}
+              onChange={set('periodEndYear')}
+            />
+            <span className="hint">
+              Optioneel: het laatste jaar van je huidige rentevaste periode (Mijn DUO). Leeg: 5 jaar vanaf de start van
+              je aanloopfase, twee jaar voor je terugbetaalfase.
+            </span>
+          </label>
+        )}
       </div>
 
       <fieldset className="form">
@@ -169,6 +194,21 @@ export function InputForm({ draft, onChange }: Props) {
             <span>
               <input
                 type="checkbox"
+                checked={draft.constantRate}
+                onChange={(e) => onChange({ ...draft, constantRate: e.target.checked })}
+              />{' '}
+              <span className="field-label">Rente blijft gelijk</span>
+            </span>
+            <span className="hint">
+              Elke nieuwe rentevaste periode houdt je huidige rente. Uit: elke periode krijgt de rente die volgt uit de
+              verwachte 5-jaarsrente op staatsobligaties (nu ongeveer 3,2%, op lange termijn 3,0%).
+            </span>
+          </label>
+
+          <label className="field checkbox">
+            <span>
+              <input
+                type="checkbox"
                 checked={draft.indexSurplus}
                 onChange={(e) => onChange({ ...draft, indexSurplus: e.target.checked })}
               />{' '}
@@ -213,4 +253,13 @@ function Slider(props: { label: string; value: number; onChange: (v: number) => 
       <span className="hint">{props.hint}</span>
     </label>
   );
+}
+
+function rateHint(info: RateInfo | null): string {
+  if (!info) return 'Optioneel. Leeg: de SF35-rente van DUO voor het startjaar van je rentevaste periode.';
+  const fill = info.defaultRatePct === null ? 'Vul je rente in.' : `Leeg: ${info.defaultRatePct}%, de SF35-rente voor ${info.startYear}.`;
+  if (info.kind === 'jaar') {
+    return `Optioneel. Je studeert nog: je rente verandert elk jaar tot je aanloopfase begint, daarna staat hij steeds 5 jaar vast. ${fill}`;
+  }
+  return `Optioneel. Je rentevaste periode loopt van ${info.startYear} tot en met ${info.endYear}. ${fill}`;
 }

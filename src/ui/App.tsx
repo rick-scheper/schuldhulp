@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  buildConstantRateSchedule,
+  buildDuoSchedule,
   compareStrategies,
   constantMarket,
   standardStrategies,
@@ -10,7 +10,7 @@ import {
 import { InputForm } from './InputForm';
 import { ScheduleResult } from './ScheduleResult';
 import { StrategyResult } from './StrategyResult';
-import { EMPTY_DRAFT, parseInputs, type InputDraft } from './inputs';
+import { EMPTY_DRAFT, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
 
 function currentMonth(): YearMonth {
   const now = new Date();
@@ -26,13 +26,16 @@ interface Props {
 export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Props) {
   const [draft, setDraft] = useState(initialDraft);
   const inputs = parseInputs(draft);
+  const rate = inputs && resolveRate(inputs, today);
+  const plan = inputs && rate?.ok ? { ...inputs, today, annualRate: rate.annualRate, rentepad: rate.rentepad } : null;
 
   // Cheap enough (≤ 420 months) to recompute on every render.
-  const schedule = inputs && buildConstantRateSchedule({ ...inputs, today });
+  const schedule = plan && buildDuoSchedule(plan);
   const outcomes =
+    plan &&
     inputs &&
     compareStrategies(
-      { ...inputs, today },
+      plan,
       standardStrategies({
         mixAflossenShare: inputs.mixAflossenShare,
         mixEquityShare: inputs.mixEquityShare,
@@ -47,16 +50,21 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
         <h1>Schuldhulp</h1>
         <p className="lede">Extra aflossen op je studieschuld of beleggen? Begin met wat DUO nu van je vraagt.</p>
       </header>
-      <InputForm draft={draft} onChange={setDraft} />
-      {schedule && outcomes ? (
+      <InputForm draft={draft} onChange={setDraft} rateInfo={rateInfo(draft, today)} />
+      {schedule && outcomes && rate?.ok ? (
         <>
           <StrategyResult outcomes={outcomes} />
-          <ScheduleResult schedule={schedule} />
+          <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>
       ) : (
-        <p className="card empty">Vul je studieschuld, de start van je terugbetaalfase en je surplus in.</p>
+        <p className="card empty">
+          {rate && !rate.ok ? rate.message : 'Vul je studieschuld, de start van je terugbetaalfase en je surplus in.'}
+        </p>
       )}
-      <footer className="hint">Geen financieel advies. Rekent met een vaste DUO-rente, vaste rendementen en zonder belasting.</footer>
+      <footer className="hint">
+        Geen financieel advies. Rekent met één verwacht verloop van de rente (zonder spreiding), vaste rendementen en
+        zonder belasting.
+      </footer>
     </main>
   );
 }

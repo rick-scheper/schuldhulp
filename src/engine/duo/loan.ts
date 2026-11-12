@@ -26,8 +26,13 @@ export function gridMonths(p: Pick<LoanTerms, 'today' | 'repaymentStart' | 'term
 export interface LoanTerms {
   /** Current studieschuld in euros (principal + accrued interest) at `today`. */
   debt: number;
-  /** DUO rate as a fraction (0.027 = 2.70%), constant over the remaining term (a rentepad comes with #22). */
+  /** DUO rate as a fraction (0.027 = 2.70%), constant over the remaining term unless `rentepad` is given. */
   annualRate: number;
+  /**
+   * The DUO rate (fraction) for each month on the grid from `today`, e.g. `buildRentepad(…).rates`.
+   * Overrides `annualRate`; past its end the last rate holds.
+   */
+  rentepad?: ArrayLike<number> | null;
   /** First month of the terugbetaalfase. */
   repaymentStart: YearMonth;
   /** First month of the simulation grid. Injected so the engine stays pure. */
@@ -45,9 +50,11 @@ export interface LoanTerms {
  * - `start`: the first month the model simulates in the terugbetaalfase;
  * - `statutory`: a Wsf art. 6.9 lid 2 point (start of repayment year 1, 4, 9, …);
  * - `draagkracht`: 1 January after a year with a draagkracht-capped termijn (art. 6.15);
+ * - `rente`: a new rentevaste periode changed the rate outside a statutory point (normally the
+ *   periodes line up with repayment years 4, 9, …, so this only shows for an entered block end);
  * - `extra`: the month after an extra aflossing (the best case, #14).
  */
-export type RecalculationKind = 'start' | 'statutory' | 'draagkracht' | 'extra';
+export type RecalculationKind = 'start' | 'statutory' | 'draagkracht' | 'rente' | 'extra';
 
 export interface Recalculation {
   month: YearMonth;
@@ -101,8 +108,20 @@ export function createLoan(terms: LoanTerms): Loan {
   const firstOffset = monthsBetween(terms.repaymentStart, terms.today); // < 0 in the aanloopfase
   const firstRepaymentOffset = Math.max(0, firstOffset);
 
-  // The rate seam: #22 replaces this with the scenario's rentepad (and adds block-reset recalculations).
-  const rateAt = (_offset: number) => monthlyRate(terms.annualRate);
+  // The rate seam: the scenario's rentepad (annual rate per grid month), or one constant rate.
+  const pad = terms.rentepad ?? null;
+  const annualAt = (i: number): number =>
+    pad && pad.length > 0 ? (pad[Math.min(i, pad.length - 1)] ?? terms.annualRate) : terms.annualRate;
+  let cachedAnnual = NaN;
+  let cachedMonthly = 0;
+  const rateAt = (annual: number): number => {
+    if (annual !== cachedAnnual) {
+      cachedAnnual = annual;
+      cachedMonthly = monthlyRate(annual);
+    }
+    return cachedMonthly;
+  };
+  let previousAnnual: number | null = null;
 
   let i = 0;
   let balance = terms.debt;
@@ -119,8 +138,11 @@ export function createLoan(terms: LoanTerms): Loan {
     step(): LoanMonth {
       const offset = firstOffset + i;
       const month = addMonths(terms.today, i);
+      const annual = annualAt(i);
       i++;
-      const rate = rateAt(offset);
+      const rateChanged = previousAnnual !== null && annual !== previousAnnual;
+      previousAnnual = annual;
+      const rate = rateAt(annual);
       const repaymentYear = offset >= 0 ? Math.floor(offset / 12) + 1 : 0;
       const empty = { month, offset, repaymentYear, recalculation: null, capped: false };
 
@@ -141,9 +163,11 @@ export function createLoan(terms: LoanTerms): Loan {
             ? 'start'
             : month.month === 1 && lastCappedYear === month.year - 1
               ? 'draagkracht'
-              : extraPending
-                ? 'extra'
-                : null;
+              : rateChanged
+                ? 'rente'
+                : extraPending
+                  ? 'extra'
+                  : null;
       if (kind) {
         const remainingMonths = termMonths - offset;
         wettelijk = annuityPayment(balance, rate, remainingMonths);

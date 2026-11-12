@@ -1,6 +1,6 @@
 import { addMonths, ym } from '../time';
 import { annuityPayment, monthlyRate } from '../duo/annuity';
-import { buildConstantRateSchedule } from '../duo/schedule';
+import { buildDuoSchedule } from '../duo/schedule';
 import { DEFAULT_EQUITY_RETURN, DEFAULT_INFLATION, DEFAULT_VASTRENTEND_RATE, DIVIDENDLEK } from './assumptions';
 import { constantMarket, monthlyGrowth } from './market';
 import { compareStrategies, simulateStrategy, type PlanInput } from './simulate';
@@ -40,7 +40,7 @@ describe('simulateStrategy', () => {
   });
 
   it('pays the same debt path as the DUO schedule when nothing goes to aflossen', () => {
-    const schedule = buildConstantRateSchedule(plan);
+    const schedule = buildDuoSchedule(plan);
     const r = simulateStrategy(plan, VASTRENTEND_STRATEGY, market, { trace: true });
     expect(r.trace!.map((m) => m.termijnPaid)).toEqual(schedule.months.map((m) => m.payment));
     expect(r.kwijtgescholden).toBe(schedule.kwijtgescholden);
@@ -78,7 +78,7 @@ describe('simulateStrategy', () => {
       const r = simulateStrategy({ ...plan, inleg: 5_000 }, s, market, { trace: true });
       r.trace!.forEach((m, i) => {
         const spent = m.termijnPaid + m.extraAflossen + m.invested;
-        const reference = buildConstantRateSchedule(plan).months[i]!.payment + 200 + (i === 0 ? 5_000 : 0);
+        const reference = buildDuoSchedule(plan).months[i]!.payment + 200 + (i === 0 ? 5_000 : 0);
         expect(spent).toBeCloseTo(reference, 6);
       });
     }
@@ -202,7 +202,7 @@ describe('draagkracht and kwijtschelding (#21)', () => {
   const capped: PlanInput = { ...plan, debt: 60_000, income: { income: 50_000, growth: 0.024 } };
 
   it('follows the capped DUO schedule on the 0%-aflossen debt path', () => {
-    const schedule = buildConstantRateSchedule(capped);
+    const schedule = buildDuoSchedule(capped);
     const r = simulateStrategy(capped, VASTRENTEND_STRATEGY, market, { trace: true });
     expect(schedule.draagkrachtCaps).toBe(true);
     expect(r.trace!.map((m) => m.termijnPaid)).toEqual(schedule.months.map((m) => m.payment));
@@ -217,7 +217,7 @@ describe('draagkracht and kwijtschelding (#21)', () => {
   });
 
   it('keeps every strategy cash-equal under the cap', () => {
-    const ref = buildConstantRateSchedule(capped).months;
+    const ref = buildDuoSchedule(capped).months;
     for (const s of standardStrategies({ mixAflossenShare: 0.5, mixEquityShare: 0.6 })) {
       const r = simulateStrategy(capped, s, market, { trace: true });
       r.trace!.forEach((m, i) => {
@@ -238,5 +238,23 @@ describe('draagkracht and kwijtschelding (#21)', () => {
     const b = simulateStrategy(plan, mixStrategy(0.5, 0.5), market);
     expect(a.eindvermogenNominal).toBe(b.eindvermogenNominal);
     expect(a.kwijtgescholden).toBe(b.kwijtgescholden);
+  });
+});
+
+describe('strategies along a rentepad (#22)', () => {
+  const rentepad = new Float64Array(420).fill(0.027).fill(0.045, 36);
+  const padded: PlanInput = { ...plan, rentepad };
+
+  it('the debt path follows the rentepad, the same as the DUO schedule', () => {
+    const out = simulateStrategy(padded, VASTRENTEND_STRATEGY, market, { trace: true });
+    const schedule = buildDuoSchedule(padded);
+    out.trace!.forEach((m, i) => expect(m.termijnPaid).toBeCloseTo(schedule.months[i]!.payment, 8));
+    expect(schedule.totalPaid).toBeGreaterThan(buildDuoSchedule(plan).totalPaid);
+  });
+
+  it('a higher later rate makes extra aflossen worth more against the same market', () => {
+    const [flat] = compareStrategies(plan, [aflossenStrategy('vastrentend'), VASTRENTEND_STRATEGY], market).slice(1);
+    const [rising] = compareStrategies(padded, [aflossenStrategy('vastrentend'), VASTRENTEND_STRATEGY], market).slice(1);
+    expect(rising!.versusBaselineNominal).toBeLessThan(flat!.versusBaselineNominal);
   });
 });
