@@ -1,0 +1,23 @@
+{
+  "id": "golden-example",
+  "description": "EXAMPLE ONLY, dummy values: not anyone's real DUO statement. Copy to golden-case.json and replace every value with your own (see README.md).",
+  "today": "2026-11",
+  "draft": {
+    "debt": "25000",
+    "repaymentStart": "2025-01",
+    "ratePct": "0,46",
+    "periodEndYear": "",
+    "surplus": "150",
+    "inleg": "",
+    "income": ""
+  },
+  "scheduleOverrides": {},
+  "expected": {
+    "termijn": 67.73,
+    "totalPaid": 26956.12,
+    "kwijtgescholden": 0
+  },
+  "seedStabilityExempt": "example fixture: the rekenhulp cases cover check (g) in CI",
+  "source": "dummy values; the termijn was computed by the app itself, so this file only exercises the mechanism",
+  "retrieved": "2026-11-12"
+}
