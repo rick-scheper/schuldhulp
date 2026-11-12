@@ -820,7 +820,16 @@ describe('cockpit', () => {
     expect(partner).toBeGreaterThan(34_000);
     fireEvent.change(screen.getByLabelText('Inkomensgroei partner'), { target: { value: '' } });
     // The inkomensvoorspelling grows the partner's income, so they borrow more than with 0% growth.
-    expect(amount('leenruimte-max')).toBeGreaterThan(flat);
+    const grown = amount('leenruimte-max');
+    expect(grown).toBeGreaterThan(flat);
+    // A partner studieschuld: the bank counts that termijn too.
+    expect(screen.queryByTestId('leenruimte-duo-partner')).toBeNull();
+    fireEvent.change(screen.getByLabelText('DUO-maandbedrag partner'), { target: { value: '150' } });
+    expect(amount('leenruimte-max')).toBeLessThan(grown - 25_000);
+    expect(text('leenruimte-duo-partner')).toMatch(/waarvan .* je partner/);
+    expect(screen.getByTestId('effect-geen-schuld-partner').textContent).toMatch(/\+/);
+    fireEvent.change(screen.getByLabelText('Laatste DUO-termijn partner'), { target: { value: '2030' } });
+    expect(amount('leenruimte-max')).toBe(grown);
   });
 
   it('shows one lens at a time', () => {

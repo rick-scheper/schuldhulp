@@ -82,3 +82,36 @@ describe('leenruimteAt: the partner', () => {
     expect(alone.partnerIncome).toBe(0);
   });
 });
+
+describe('leenruimteAt: the partner’s studieschuld', () => {
+  const withDuo = (patch: Partial<PartnerSettings>) => ({
+    ...DEFAULT_LEENRUIMTE,
+    potMeetellen: false,
+    partner: { ...DEFAULT_PARTNER, income: 40_000, growth: 0, ...patch },
+  });
+
+  it('takes the partner’s termijn off the joint mortgage, not off the user alone', () => {
+    const without = leenruimteAt(point({}), withDuo({}), ctx(50_000));
+    const r = leenruimteAt(point({}), withDuo({ duoTermijn: 150, duoLaatsteJaar: 2050 }), ctx(50_000));
+    // €150 a month at a 4% toetsrente: brutering 1.20 × 150 × the 30-year annuity factor (≈ 209.5) ≈ €37.7k.
+    expect(r.partnerDuoVerlaging).toBeGreaterThan(36_000);
+    expect(r.partnerDuoVerlaging).toBeLessThan(40_000);
+    expect(without.metSchuld - r.metSchuld).toBeCloseTo(r.partnerDuoVerlaging, 0);
+    expect(r.duoVerlaging).toBeCloseTo(without.duoVerlaging + r.partnerDuoVerlaging, 0);
+    expect(r.alleenMetSchuld).toBeCloseTo(without.alleenMetSchuld, 0);
+  });
+
+  it('stops counting after the last termijn, by default 35 years from two years after graduating', () => {
+    expect(leenruimteAt(point({}), withDuo({ duoTermijn: 150, duoLaatsteJaar: 2035 }), ctx(50_000)).partnerDuoVerlaging).toBe(0);
+    // ctx graduates in 2030: last termijn in 2067.
+    expect(leenruimteAt(point({ year: 2066 }), withDuo({ duoTermijn: 150 }), ctx(50_000)).partnerDuoVerlaging).toBeGreaterThan(0);
+    expect(leenruimteAt(point({ year: 2067 }), withDuo({ duoTermijn: 150 }), ctx(50_000)).partnerDuoVerlaging).toBe(0);
+  });
+
+  it('stays the same in nominal euros, so it shrinks in euro’s van nu', () => {
+    const c = { ...ctx(50_000), inflation: 0.02 };
+    const early = leenruimteAt(point({ monthIndex: 0 }), withDuo({ duoTermijn: 150, duoLaatsteJaar: 2050 }), c);
+    const late = leenruimteAt(point({ monthIndex: 120 }), withDuo({ duoTermijn: 150, duoLaatsteJaar: 2050 }), c);
+    expect(late.partnerDuoVerlaging).toBeLessThan(early.partnerDuoVerlaging * 0.85);
+  });
+});

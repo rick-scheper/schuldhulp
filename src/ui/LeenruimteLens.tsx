@@ -8,6 +8,7 @@ import {
   buildLeenruimte,
   DEFAULT_LEENRUIMTE,
   LABELS,
+  partnerDuoLaatsteJaar,
   type PartnerSettings,
   strategyEffects,
   TOETSRENTES,
@@ -39,6 +40,8 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
   const [partnerDraft, setPartnerDraft] = useState('');
   const [partnerGradDraft, setPartnerGradDraft] = useState('');
   const [partnerGrowthDraft, setPartnerGrowthDraft] = useState('');
+  const [partnerDuoDraft, setPartnerDuoDraft] = useState('');
+  const [partnerDuoEindDraft, setPartnerDuoEindDraft] = useState('');
   const [index, setIndex] = useState(() => Math.min(c.points.length - 1, Math.max(0, Math.round(jaren))));
   const set = (patch: Partial<LeenruimteSettings>) => setS((old) => ({ ...old, ...patch }));
   const setPartner = (patch: Partial<PartnerSettings>) => setS((old) => ({ ...old, partner: { ...old.partner, ...patch } }));
@@ -89,8 +92,8 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
             </p>
             <p className="hint">
               Leennormen en grenzen van 2026, voor latere jaren meegegroeid met de inflatie; je extra spaargeld is in euro's van nu. Het
-              inkomen van je partner groeit met een eigen inkomensvoorspelling (sector, opleiding, afstudeerjaar) of een vaste groei; een
-              studieschuld van je partner telt niet mee. Je belegde pot is het rekenvoorbeeld van 100% aandelen, zonder de belasting bij verkoop. Kosten koper geschat op{' '}
+              inkomen van je partner groeit met een eigen inkomensvoorspelling (sector, opleiding, afstudeerjaar) of een vaste groei; het
+              DUO-maandbedrag van je partner blijft gelijk (in euro's van toen) tot de laatste termijn. Je belegde pot is het rekenvoorbeeld van 100% aandelen, zonder de belasting bij verkoop. Kosten koper geschat op{' '}
               {formatAmount(LEENRUIMTE_REGELS.overigeKostenKoper)} plus overdrachtsbelasting en NHG-premie. Geen advies.
             </p>
           </>
@@ -114,7 +117,11 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
             const inkomen = samen
               ? `verdien je ongeveer ${formatAmount(q.income)} en je partner ${formatAmount(q.partnerIncome)} per jaar, samen ${formatAmount(q.income + q.partnerIncome)}`
               : `verdien je ongeveer ${formatAmount(q.income)} per jaar`;
-            return `Eind ${q.year} ${inkomen}. Je studieschuld kost ${samen ? 'jullie' : 'je'} dan ${formatAmount(q.duoVerlaging)} hypotheek.`;
+            const schuld =
+              q.partnerDuoVerlaging > 0
+                ? `Jullie studieschulden kosten dan ${formatAmount(q.duoVerlaging)} hypotheek, waarvan ${formatAmount(q.partnerDuoVerlaging)} die van je partner`
+                : `Je studieschuld kost ${samen ? 'jullie' : 'je'} dan ${formatAmount(q.duoVerlaging)} hypotheek`;
+            return `Eind ${q.year} ${inkomen}. ${schuld}.`;
           }}
         />
       </LensLayout>
@@ -184,7 +191,7 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
         </div>
         {samen && (
           <fieldset className="leenruimte-partner" data-testid="leenruimte-partner">
-            <legend>Inkomensgroei partner</legend>
+            <legend>Je partner</legend>
             <div className="leenruimte-fields">
               <label>
                 <span>Sector</span>
@@ -244,12 +251,46 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
                   }}
                 />
               </label>
+              <label>
+                <span>DUO-maandbedrag</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="geen studieschuld"
+                  value={partnerDuoDraft}
+                  aria-label="DUO-maandbedrag partner"
+                  onChange={(e) => {
+                    setPartnerDuoDraft(e.target.value);
+                    const v = e.target.value.trim() === '' ? 0 : parseDutchNumber(e.target.value);
+                    if (v !== null && v >= 0) setPartner({ duoTermijn: v });
+                  }}
+                />
+              </label>
+              <label>
+                <span>Laatste termijn</span>
+                <input
+                  inputMode="numeric"
+                  placeholder={String(partnerDuoLaatsteJaar({ ...s.partner, duoLaatsteJaar: null }, full))}
+                  value={partnerDuoEindDraft}
+                  disabled={s.partner.duoTermijn <= 0}
+                  aria-label="Laatste DUO-termijn partner"
+                  onChange={(e) => {
+                    setPartnerDuoEindDraft(e.target.value);
+                    const raw = e.target.value.trim();
+                    if (raw === '') setPartner({ duoLaatsteJaar: null });
+                    else if (/^\d{4}$/.test(raw) && Math.abs(Number(raw) - full.baseYear) <= 60) setPartner({ duoLaatsteJaar: Number(raw) });
+                  }}
+                />
+              </label>
             </div>
             <p className="hint" data-testid="leenruimte-partner-inkomen">
               Eind {p.year} verdient je partner ongeveer {formatAmount(p.partnerIncome)} per jaar; samen {formatAmount(p.income + p.partnerIncome)}.
               {s.partner.growth === null
                 ? ' Groei volgens de cao-lonen plus werkervaring, zoals bij jouw inkomensvoorspelling; leeg afstudeerjaar = hetzelfde als jij.'
                 : ` Elk jaar ${pct(s.partner.growth)} groei.`}
+            </p>
+            <p className="hint">
+              DUO-maandbedrag: het wettelijk maandbedrag uit Mijn DUO, niet een bedrag dat verlaagd is door de draagkracht; de bank rekent
+              met het volle bedrag. Leeg laatste termijn: 35 jaar terugbetalen vanaf twee jaar na het afstudeerjaar van je partner.
             </p>
           </fieldset>
         )}
@@ -287,8 +328,13 @@ export function LeenruimteLens({ cockpit: c, unit, ctx, jaren, surplus }: Props)
           )}
         </div>
         <div className="kpi">
-          <dt>Kost je studieschuld</dt>
+          <dt>{p.partnerDuoVerlaging > 0 ? 'Kost jullie studieschuld' : 'Kost je studieschuld'}</dt>
           <dd data-testid="leenruimte-duo">{formatAmount(-p.duoVerlaging)}</dd>
+          {p.partnerDuoVerlaging > 0 && (
+            <dd className="kpi-sub" data-testid="leenruimte-duo-partner">
+              waarvan {formatAmount(p.partnerDuoVerlaging)} je partner
+            </dd>
+          )}
         </div>
         <div className="kpi">
           <dt>Spaargeld eind {p.year}</dt>

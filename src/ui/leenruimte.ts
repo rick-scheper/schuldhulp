@@ -1,4 +1,5 @@
 import {
+  hypotheekVerlaging,
   DEFAULT_OPLEIDINGSNIVEAU,
   DEFAULT_SECTOR,
   incomeForecast,
@@ -32,6 +33,24 @@ export interface PartnerSettings {
   graduationYear: number | null;
   /** A fixed nominal growth per year; null = the inkomensvoorspelling. */
   growth: number | null;
+  /**
+   * The partner's wettelijk DUO-maandbedrag today (not a draagkracht-reduced one: the lender
+   * counts the full termijn, Trhk art. 3a lid 3); 0 = no studieschuld. An annuity, so it stays
+   * the same in nominal euros until the debt is paid off (rate changes not modelled).
+   */
+  duoTermijn: number;
+  /** The year of the partner's last termijn; null = SF35 from the afstudeerjaar (`partnerDuoLaatsteJaar`). */
+  duoLaatsteJaar: number | null;
+}
+
+/** SF35: the aanloopfase starts the year after graduating, repayment two years later, for 35 years. */
+export function partnerDuoLaatsteJaar(s: PartnerSettings, ctx: Pick<LeenruimteContext, 'graduationYear'>): number {
+  return s.duoLaatsteJaar ?? (s.graduationYear ?? ctx.graduationYear) + 3 + 35 - 1;
+}
+
+/** The partner's DUO termijn (nominal per month) the lender counts when buying at the end of `year`. */
+export function partnerTermijnAt(year: number, s: PartnerSettings, ctx: Pick<LeenruimteContext, 'graduationYear'>): number {
+  return s.income > 0 && s.duoTermijn > 0 && year < partnerDuoLaatsteJaar(s, ctx) ? s.duoTermijn : 0;
 }
 
 /** The Leenruimte lens' own settings (not saved; the defaults suit a single starter). */
@@ -57,6 +76,8 @@ export const DEFAULT_PARTNER: PartnerSettings = {
   opleidingsniveau: DEFAULT_OPLEIDINGSNIVEAU,
   graduationYear: null,
   growth: null,
+  duoTermijn: 0,
+  duoLaatsteJaar: null,
 };
 
 export const DEFAULT_LEENRUIMTE: LeenruimteSettings = {
@@ -103,8 +124,10 @@ export interface LeenruimtePoint {
   alleenMetSchuld: number;
   /** Max mortgage after 100% extra aflossen up to this year (assuming DUO recalculated the termijn). */
   metAflossen: number;
-  /** What the DUO debt takes off, paying only the termijn. */
+  /** What the DUO debts take off (the user's, paying only the termijn, plus the partner's). */
   duoVerlaging: number;
+  /** The partner's part of `duoVerlaging` (0 without a partner studieschuld). */
+  partnerDuoVerlaging: number;
   /** Highest purchase price, savings kept as eigen inbreng. */
   koopsomInbreng: Koopsom;
   /** Highest purchase price, savings first paid off at DUO (keeping enough for the kosten koper). */
@@ -157,8 +180,16 @@ export function leenruimteAt(
   // deflated amounts. Savings are a what-if in euro's van nu. Results go back to the display unit.
   const d = toEurosVanNu(1, p.monthIndex + 1, ctx.inflation);
   const termijn = (debt: number) => (debt > 0.5 && p.remainingMonths > 0 ? wettelijkTermijn(debt, p.duoRate, p.remainingMonths) * d : 0);
+  // The partner's termijn only counts when buying together (with the partner's income).
+  const partnerTermijn = partner ? partnerTermijnAt(p.year, s.partner, ctx) * d : 0;
   const at = (debt: number, samen = true) =>
-    leenruimte({ income: income * d, partnerIncome: samen ? partnerIncome * d : 0, toetsrente: r, duoTermijn: termijn(debt), label: s.label });
+    leenruimte({
+      income: income * d,
+      partnerIncome: samen ? partnerIncome * d : 0,
+      toetsrente: r,
+      duoTermijn: termijn(debt) + (samen ? partnerTermijn : 0),
+      label: s.label,
+    });
   const met = at(p.debtNominal);
   const alleen = partner ? at(p.debtNominal, false) : met;
   const aflossen = at(p.debtAflossenNominal);
@@ -203,6 +234,7 @@ export function leenruimteAt(
     alleenMetSchuld: alleen.max * f,
     metAflossen: aflossen.max * f,
     duoVerlaging: met.duoVerlaging * f,
+    partnerDuoVerlaging: hypotheekVerlaging(partnerTermijn, r) * f,
     koopsomInbreng: scaleKoopsom(inbreng, f),
     koopsomDuo: scaleKoopsom(duo, f),
     duoAfgelost: duoAfgelost * f,
@@ -232,14 +264,18 @@ export function strategyEffects(c: Cockpit, index: number, s: LeenruimteSettings
   const with_ = (patch: Partial<LeenruimteSettings>) => price(leenruimteAt(p, { ...s, ...patch }, ctx)) - price(base);
   const effects: StrategyEffect[] = [];
   const noDebt = leenruimteAt({ ...p, debtNominal: 0 }, s, ctx);
-  effects.push({ key: 'geen-schuld', label: 'Zonder studieschuld', delta: price(noDebt) - price(base) });
+  const partner = partnerPath(s.partner, ctx);
+  const partnerDuo = partner !== null && partnerTermijnAt(p.year, s.partner, ctx) > 0;
+  effects.push({ key: 'geen-schuld', label: partnerDuo ? 'Zonder jouw studieschuld' : 'Zonder studieschuld', delta: price(noDebt) - price(base) });
+  if (partnerDuo) {
+    effects.push({ key: 'geen-schuld-partner', label: 'Zonder studieschuld van je partner', delta: with_({ partner: { ...s.partner, duoTermijn: 0 } }) });
+  }
   // Extra aflossen spends the surplus at DUO, so its pot (if counted) is the aflossen pot.
   const aflossen = leenruimteAt({ ...p, debtNominal: p.debtAflossenNominal, potAandelenNominal: p.potAflossenNominal }, s, ctx);
   effects.push({ key: 'aflossen', label: 'Je surplus tot dan naar extra aflossen', delta: price(aflossen) - price(base) });
   if (base.spaargeld > 0) {
     effects.push({ key: 'spaargeld-duo', label: 'Spaargeld eerst bij DUO aflossen', delta: base.koopsomDuo.prijs - price(base) });
   }
-  const partner = partnerPath(s.partner, ctx);
   if (partner) {
     const alone = leenruimteAt(p, s, ctx, null);
     effects.push({ key: 'partner', label: 'Alleen kopen, zonder je partner', delta: price(alone) - price(base) });
