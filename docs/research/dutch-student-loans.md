@@ -200,6 +200,8 @@ Fictive percentages back to 2017 are on [Belastingdienst, percentages fictief re
 5. Voordeel = rendement × aandeel.
 6. Tax = 36% × voordeel.
 
+**Rounding** (checked 12-11-2026 against the page's own rekenvoorbeelden 1 and 3, which the engine reproduces to the euro, see `src/engine/tax/fixtures/box3/README.md`): category returns rounded down for assets and up for debts (2.70% × €96,200 = €2,598), the aandeel truncated to 2 decimals in percent (the text of step 4 says 3 decimals, but every example uses 2), the voordeel and the tax rounded down to whole euros. No interactive box 3 rekenhulp for the forfait was found on belastingdienst.nl.
+
 **Actual return (tegenbewijs):** following Hoge Raad case law, if the actual return is lower than the fictive return, the actual return is taxed. This is done in the IB return ([Belastingdienst 2026](https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/berekening-box-3-inkomen-2026); [werkelijk rendement in aangifte 2025](https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/werkelijk-rendement-belastingaangifte)).
 
 **Model implications** (my derivation from the rules above, for someone whose assets are well above the heffingsvrij vermogen):

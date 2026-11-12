@@ -1,0 +1,13 @@
+{
+  "id": "d1",
+  "description": "Forfait, pot below the heffingsvrij vermogen after netting the DUO debt: no tax",
+  "input": { "year": 2026, "equity": 40000, "vastrentend": 0, "vastrentendProduct": "deposito", "overig": 0, "debt": 30000, "actualReturn": null },
+  "expected": {
+    "bankRendement": 0, "overigeRendement": 2400, "aftrekbareSchulden": 26200, "debtRendement": 708,
+    "belastbaarRendement": 1692, "rendementsgrondslag": 13800, "grondslag": 0, "aandeel": 0, "voordeel": 0, "tax": 0
+  },
+  "tolerance": { "taxAbs": 0 },
+  "source": "Hand calculation with the Belastingdienst 2026 box 3 method and rounding, https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/berekening-box-3-inkomen-2026 (tegenbewijs: https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/wat-is-mijn-werkelijk-rendement). The Belastingdienst publishes no interactive box 3 rekenhulp; the method and rounding are checked against its own 2026 rekenvoorbeelden 1 and 3 in box3.test.ts.",
+  "retrieved": "2026-11-12",
+  "derivation": "overige 40.000 × 6,00% = 2.400; aftrekbare schulden 30.000 − 3.800 = 26.200; 26.200 × 2,70% = 707,4 → 708 (up); belastbaar rendement 2.400 − 708 = 1.692; rendementsgrondslag 40.000 − 26.200 = 13.800 ≤ 59.357 → grondslag 0, aandeel 0%, voordeel 0, tax 0."
+}

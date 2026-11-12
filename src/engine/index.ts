@@ -5,3 +5,4 @@ export * from './duo/draagkracht';
 export { createLoan, gridMonths, type Loan, type LoanMonth, type LoanTerms } from './duo/loan';
 export * from './strategy';
 export * from './rate';
+export * from './tax';

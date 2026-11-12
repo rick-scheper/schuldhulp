@@ -1,0 +1,13 @@
+{
+  "id": "d2-overig",
+  "description": "d2 with 50.000 overig box 3-vermogen (banktegoeden)",
+  "input": { "year": 2026, "equity": 120000, "vastrentend": 0, "vastrentendProduct": "deposito", "overig": 50000, "debt": 25000, "actualReturn": null },
+  "expected": {
+    "bankRendement": 640, "overigeRendement": 7200, "aftrekbareSchulden": 21200, "debtRendement": 573,
+    "belastbaarRendement": 7267, "rendementsgrondslag": 148800, "grondslag": 89443, "aandeel": 0.601, "voordeel": 4367, "tax": 1572
+  },
+  "tolerance": { "taxAbs": 0 },
+  "source": "Hand calculation with the Belastingdienst 2026 box 3 method and rounding, https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/berekening-box-3-inkomen-2026 (tegenbewijs: https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/wat-is-mijn-werkelijk-rendement). The Belastingdienst publishes no interactive box 3 rekenhulp; the method and rounding are checked against its own 2026 rekenvoorbeelden 1 and 3 in box3.test.ts.",
+  "retrieved": "2026-11-12",
+  "derivation": "banktegoeden 50.000 × 1,28% = 640; overige 120.000 × 6,00% = 7.200; schulden as d2: 573; belastbaar rendement 640 + 7.200 − 573 = 7.267; rendementsgrondslag 170.000 − 21.200 = 148.800; grondslag 148.800 − 59.357 = 89.443; aandeel 89.443 / 148.800 = 60,109% → 60,10%; voordeel 7.267 × 60,10% = 4.367,46 → 4.367; tax 36% × 4.367 = 1.572,12 → 1.572."
+}

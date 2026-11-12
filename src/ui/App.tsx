@@ -63,7 +63,7 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
       )}
       <footer className="hint">
         Geen financieel advies. Rekent met één verwacht verloop van de rente (zonder spreiding), vaste rendementen en
-        zonder belasting.
+        het huidige box 3-forfait voor de hele looptijd.
       </footer>
     </main>
   );

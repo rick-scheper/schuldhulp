@@ -1,8 +1,9 @@
 import { addMonths, ym } from '../time';
 import { annuityPayment, monthlyRate } from '../duo/annuity';
 import { buildDuoSchedule } from '../duo/schedule';
+import { BOX3_2026, box3Holdings, forfaitBox3, indexAmount, tegenbewijsBox3, type Box3Settings } from '../tax';
 import { DEFAULT_EQUITY_RETURN, DEFAULT_INFLATION, DEFAULT_VASTRENTEND_RATE, DIVIDENDLEK } from './assumptions';
-import { constantMarket, monthlyGrowth } from './market';
+import { constantMarket, monthlyGrowth, type Market } from './market';
 import { compareStrategies, simulateStrategy, type PlanInput } from './simulate';
 import {
   AANDELEN_STRATEGY,
@@ -256,5 +257,151 @@ describe('strategies along a rentepad (#22)', () => {
     const [flat] = compareStrategies(plan, [aflossenStrategy('vastrentend'), VASTRENTEND_STRATEGY], market).slice(1);
     const [rising] = compareStrategies(padded, [aflossenStrategy('vastrentend'), VASTRENTEND_STRATEGY], market).slice(1);
     expect(rising!.versusBaselineNominal).toBeLessThan(flat!.versusBaselineNominal);
+  });
+});
+
+describe('box 3 forfait + tegenbewijs (#23)', () => {
+  const box3: Box3Settings = { overigVermogen: 0, vastrentendProduct: 'deposito' };
+  const rich: PlanInput = { ...plan, surplus: 1_000, inleg: 80_000, box3 };
+
+  it('without box 3 settings the pots stay untaxed', () => {
+    const r = simulateStrategy(plan, AANDELEN_STRATEGY, market);
+    expect(r.box3TaxNominal).toBe(0);
+  });
+
+  it('taxes nothing while the pot minus the DUO debt stays below the heffingsvrij vermogen', () => {
+    const small: PlanInput = { ...plan, surplus: 50 };
+    const taxed = simulateStrategy({ ...small, box3 }, AANDELEN_STRATEGY, market);
+    expect(taxed.box3TaxNominal).toBe(0);
+    expect(taxed.eindvermogenNominal).toBe(simulateStrategy(small, AANDELEN_STRATEGY, market).eindvermogenNominal);
+  });
+
+  it('levies each calendar year at year end: min(forfait, 36% × actual) on the 1 January holdings', () => {
+    const r = simulateStrategy(rich, AANDELEN_STRATEGY, market, { trace: true });
+    const years = r.box3Years!;
+    expect(years.map((y) => y.year)).toEqual(Array.from({ length: 35 }, (_, k) => 2027 + k));
+    expect(r.box3TaxNominal).toBeGreaterThan(0);
+    // first year: peildatum = the start of the grid, pots still empty, so no tax
+    expect(years[0]!.tax).toBe(0);
+    // every later year follows the forfait on the pot and the full DUO balance at the previous year end
+    for (let k = 1; k < years.length; k++) {
+      const dec = r.trace![12 * k - 1]!;
+      const year = 2027 + k;
+      const params = {
+        ...BOX3_2026,
+        heffingsvrijVermogen: indexAmount(59_357, 2026, year, 0.02),
+        schuldendrempel: indexAmount(3_800, 2026, year, 0.02),
+      };
+      const h = { bank: 0, overige: dec.equityPot, debt: dec.balanceAfter };
+      expect(years[k]!.tax).toBe(Math.min(forfaitBox3(h, params).tax, years[k]!.detail.tax));
+      expect(years[k]!.detail.forfait).toEqual(forfaitBox3(h, params));
+    }
+    // the tax comes out of the pot in December
+    const dec = r.trace![23]!;
+    expect(dec.box3Tax).toBe(years[1]!.tax);
+    expect(dec.box3Tax).toBeGreaterThan(0);
+    expect(r.box3TaxNominal).toBe(years.reduce((s, y) => s + y.tax, 0));
+  });
+
+  it('the eindvermogen is after tax and lower than without box 3', () => {
+    const taxed = simulateStrategy(rich, AANDELEN_STRATEGY, market);
+    const untaxed = simulateStrategy({ ...rich, box3: null }, AANDELEN_STRATEGY, market);
+    expect(taxed.eindvermogenNominal).toBeLessThan(untaxed.eindvermogenNominal - taxed.box3TaxNominal + 1);
+    expect(taxed.box3TaxReal).toBeLessThan(taxed.box3TaxNominal);
+  });
+
+  it('tegenbewijs: a loss year is taxed 0, a weak year at 36% of the actual return', () => {
+    // equities lose 20% in 2029 (grid months 24–35) and earn 0,5% in 2031 (months 48–59)
+    const crash: Market = {
+      equityGrowth: (i) => (i >= 24 && i < 36 ? monthlyGrowth(-0.2) : i >= 48 && i < 60 ? monthlyGrowth(0.005) : market.equityGrowth(i)),
+      vastrentendGrowth: market.vastrentendGrowth,
+    };
+    const r = simulateStrategy(rich, AANDELEN_STRATEGY, crash, { trace: true });
+    const y2029 = r.box3Years!.find((y) => y.year === 2029)!;
+    expect(y2029.detail.forfait.tax).toBeGreaterThan(0);
+    expect(y2029.tax).toBe(0);
+    expect(y2029.detail.tegenbewijs).toBe(true);
+    const y2031 = r.box3Years!.find((y) => y.year === 2031)!;
+    expect(y2031.detail.tegenbewijs).toBe(true);
+    expect(y2031.tax).toBe(Math.floor(0.36 * y2031.detail.werkelijkRendement));
+    expect(y2031.tax).toBeLessThan(y2031.detail.forfait.tax);
+  });
+
+  it('the werkelijk rendement is the pot result net of deposits (minus DUO interest, none here)', () => {
+    const r = simulateStrategy({ ...rich, debt: 0 }, AANDELEN_STRATEGY, market, { trace: true });
+    const t = r.trace!;
+    const deposits2028 = t.slice(12, 24).reduce((s, m) => s + m.invested, 0);
+    const actual = t[23]!.equityPot + t[23]!.box3Tax - t[11]!.equityPot - deposits2028;
+    expect(r.box3Years![1]!.detail.werkelijkRendement).toBe(Math.floor(actual + 1e-7));
+  });
+
+  it('DUO interest lowers the werkelijk rendement', () => {
+    const noDebt = simulateStrategy({ ...rich, debt: 0 }, AANDELEN_STRATEGY, market, { trace: true });
+    const withDebt = simulateStrategy(rich, AANDELEN_STRATEGY, market, { trace: true });
+    // same pots (no extra aflossen), so the difference is the interest charged in 2028
+    expect(withDebt.box3Years![1]!.detail.werkelijkRendement).toBeLessThan(noDebt.box3Years![1]!.detail.werkelijkRendement);
+  });
+
+  it('a deposito counts as banktegoeden, a staatsobligatie as overige bezittingen', () => {
+    const run = (vastrentendProduct: Box3Settings['vastrentendProduct']) =>
+      simulateStrategy({ ...rich, box3: { ...box3, vastrentendProduct } }, VASTRENTEND_STRATEGY, market, { trace: true });
+    const deposito = run('deposito');
+    const obligatie = run('staatsobligatie');
+    expect(deposito.box3Years![1]!.detail.forfait.bankRendement).toBeGreaterThan(0);
+    expect(deposito.box3Years![1]!.detail.forfait.overigeRendement).toBe(0);
+    expect(obligatie.box3Years![1]!.detail.forfait.bankRendement).toBe(0);
+    expect(obligatie.box3Years![1]!.detail.forfait.overigeRendement).toBeGreaterThan(0);
+    expect(obligatie.box3TaxNominal).toBeGreaterThan(deposito.box3TaxNominal);
+  });
+
+  describe('overig box 3-vermogen', () => {
+    const overig: PlanInput = { ...rich, box3: { ...box3, overigVermogen: 50_000 } };
+
+    it('is held constant in real terms and counts as banktegoeden', () => {
+      const r = simulateStrategy(overig, AANDELEN_STRATEGY, market, { trace: true });
+      r.box3Years!.forEach((y, k) => {
+        expect(y.detail.forfait.bankRendement).toBe(Math.floor(Math.floor(50_000 * 1.02 ** k) * 0.0128 + 1e-7));
+      });
+    });
+
+    it('uses up heffingsvrij vermogen, so the strategy pays more tax', () => {
+      const without = simulateStrategy(rich, AANDELEN_STRATEGY, market);
+      const withOverig = simulateStrategy(overig, AANDELEN_STRATEGY, market);
+      expect(withOverig.box3TaxNominal).toBeGreaterThan(without.box3TaxNominal);
+      expect(withOverig.eindvermogenNominal).toBeLessThan(without.eindvermogenNominal);
+    });
+
+    it('when the pot is empty, the tax comes from the surplus, and every strategy still spends the same cash', () => {
+      const big: PlanInput = { ...plan, box3: { ...box3, overigVermogen: 300_000 } };
+      const r = simulateStrategy(big, aflossenStrategy(), market, { trace: true });
+      const ref = buildDuoSchedule(plan).months;
+      // while aflossen the pot is empty, so the first taxed year is paid from January's money
+      const firstTax = r.trace!.findIndex((m) => m.box3Tax > 0);
+      expect(r.trace![firstTax]!.equityPot).toBe(0);
+      expect(r.trace![firstTax + 1]!.taxFromSurplus).toBeGreaterThan(0);
+      r.trace!.forEach((m, i) => {
+        expect(m.termijnPaid + m.extraAflossen + m.invested + m.taxFromSurplus).toBeCloseTo(ref[i]!.payment + 200, 6);
+      });
+    });
+  });
+
+  it('counts the full DUO balance as a box 3 debt', () => {
+    const p: PlanInput = { ...rich, box3: { ...box3, overigVermogen: 100_000 } };
+    const r = simulateStrategy(p, VASTRENTEND_STRATEGY, market, { trace: true });
+    // 2030: peildatum 1 January 2030 = the balance after December 2029 (grid month 35)
+    const y = r.box3Years![3]!;
+    expect(y.year).toBe(2030);
+    const balance = Math.ceil(r.trace![35]!.balanceAfter - 1e-7);
+    expect(y.detail.forfait.aftrekbareSchulden).toBe(balance - indexAmount(3_800, 2026, 2030, 0.02));
+    // and the 1 January holdings are what tegenbewijsBox3 sees
+    const h = box3Holdings({ equity: 0, vastrentend: r.trace![35]!.vastrentendPot, overig: 100_000 * 1.02 ** 3, debt: r.trace![35]!.balanceAfter }, 'deposito');
+    const params = { ...BOX3_2026, heffingsvrijVermogen: indexAmount(59_357, 2026, 2030, 0.02), schuldendrempel: indexAmount(3_800, 2026, 2030, 0.02) };
+    expect(tegenbewijsBox3(h, 1e9, params).forfait).toEqual(y.detail.forfait);
+  });
+
+  it('compareStrategies passes the box 3 settings to every strategy', () => {
+    const results = compareStrategies(rich, standardStrategies({ mixAflossenShare: 0.5, mixEquityShare: 0.5 }), market);
+    expect(results.every((o) => o.box3TaxNominal >= 0)).toBe(true);
+    expect(results[2]!.box3TaxNominal).toBeGreaterThan(0);
   });
 });

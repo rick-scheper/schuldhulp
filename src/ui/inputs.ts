@@ -4,6 +4,7 @@ import {
   DEFAULT_EQUITY_RETURN,
   DEFAULT_INCOME_GROWTH,
   DEFAULT_INFLATION,
+  DEFAULT_VASTRENTEND_PRODUCT,
   DEFAULT_VASTRENTEND_RATE,
   EQUITY_INDICES,
   addMonths,
@@ -13,12 +14,14 @@ import {
   expectedYieldSeries,
   parseYearMonth,
   SF35_TERM_MONTHS,
+  type Box3Settings,
   type RatePeriod,
   type RatePeriodKind,
   type EquityIndex,
   type FreedUpDestination,
   type IncomePath,
   type ReturnAssumptions,
+  type VastrentendProduct,
   type YearMonth,
 } from '../engine';
 
@@ -34,6 +37,8 @@ export interface InputDraft {
   inleg: string;
   /** Gross yearly income (≈ toetsingsinkomen); empty = no draagkracht. */
   income: string;
+  /** Overig box 3-vermogen; empty = €0. */
+  overigVermogen: string;
   equityIndex: EquityIndex;
   vastrentendPct: string;
   /** Mix slider: % of the money to extra aflossen. */
@@ -49,6 +54,8 @@ export interface InputDraft {
   constantRate: boolean;
   indexSurplus: boolean;
   freedUpDestination: FreedUpDestination;
+  /** Box 3 category of the vastrentend pot. */
+  vastrentendProduct: VastrentendProduct;
 }
 
 /** A yearly fraction as a Dutch percentage string: 0.0007 → "0,07". */
@@ -68,6 +75,7 @@ export const EMPTY_DRAFT: InputDraft = {
   periodEndYear: '',
   inleg: '',
   income: '',
+  overigVermogen: '',
   equityIndex: DEFAULT_EQUITY_INDEX,
   vastrentendPct: pct(DEFAULT_VASTRENTEND_RATE),
   mixAflossenPct: 50,
@@ -79,6 +87,7 @@ export const EMPTY_DRAFT: InputDraft = {
   constantRate: false,
   indexSurplus: true,
   freedUpDestination: 'aandelen',
+  vastrentendProduct: DEFAULT_VASTRENTEND_PRODUCT,
 };
 
 export interface ParsedInputs {
@@ -99,6 +108,7 @@ export interface ParsedInputs {
   mixAflossenShare: number;
   mixEquityShare: number;
   freedUpDestination: FreedUpDestination;
+  box3: Box3Settings;
 }
 
 /** A percentage field as a fraction, or null when it is not a number in [0, max]%. */
@@ -115,6 +125,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
   const periodEnd = d.periodEndYear.trim();
   const currentPeriodEndYear = periodEnd === '' ? undefined : /^\d{4}$/.test(periodEnd) ? Number(periodEnd) : null;
   const inleg = d.inleg.trim() === '' ? 0 : parseDutchNumber(d.inleg);
+  const overigVermogen = d.overigVermogen.trim() === '' ? 0 : parseDutchNumber(d.overigVermogen);
   const vastrentendRate = parsePct(d.vastrentendPct, 20);
   const equityReturn = parsePct(d.equityReturnPct, 30);
   const ter = parsePct(d.terPct, 5);
@@ -128,6 +139,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     currentRate === null ||
     currentPeriodEndYear === null ||
     inleg === null ||
+    overigVermogen === null ||
     vastrentendRate === null ||
     equityReturn === null ||
     ter === null ||
@@ -152,6 +164,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     mixAflossenShare: d.mixAflossenPct / 100,
     mixEquityShare: d.mixEquityPct / 100,
     freedUpDestination: d.freedUpDestination,
+    box3: { overigVermogen, vastrentendProduct: d.vastrentendProduct },
   };
 }
 

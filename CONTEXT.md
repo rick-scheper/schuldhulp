@@ -21,14 +21,17 @@
 - **Inleg** — an optional one-off amount (existing savings) allocated at the start, alongside the surplus.
 - **Vrijgekomen geld** — the part of the termijn a strategy no longer pays compared with the 0%-aflossen debt path, because extra aflossen lowered the termijn or cleared the debt. It is allocated like the surplus (so every strategy spends the same cash each month); once the debt is cleared it goes into the strategy's investment split, for 100% extra aflossen into equities unless overridden.
 - **Toetsingsinkomen** — the income DUO bases draagkracht on (roughly the verzamelinkomen).
-- **Vastrentend** — a stable investment that earns one fixed annual rate (e.g. a deposito or staatsobligatie held to maturity).
+- **Vastrentend** — a stable investment that earns one fixed annual rate (e.g. a deposito or staatsobligatie held to maturity). Its **soort vastrentend product** (Geavanceerd) sets the box 3 category: a deposito (default) is a banktegoed, a staatsobligatie an overige bezitting.
 - **Dividendlek** — dividend withholding tax lost inside an index fund, which the investor cannot reclaim; a hidden yearly drag on the equity return on top of the fund's TER.
 - **Strategy** — a plan for the surplus and inleg: extra aflossen, invest in equities, vastrentend, or a mix.
 - **Mix** — a user-defined strategy: a share to extra aflossen, the rest split between equities and vastrentend.
 - **Scenario** — one simulated future (interest-rate path, market returns, income path) a strategy is evaluated against. Called a **toekomst** in the UI.
-- **Forfait** — the current box 3 regime: tax on a fictive return per asset category (banktegoeden, overige bezittingen, schulden), capped at the actual return via **tegenbewijs**.
+- **Forfait** — the current box 3 regime: tax on a fictive return per asset category (banktegoeden, overige bezittingen, schulden) on the holdings of 1 January, capped at the actual return via **tegenbewijs**. The model holds the 2026 rate and percentages for every forfait year.
+- **Tegenbewijs** — when the werkelijk rendement of a year (income and value changes, also unrealised, minus interest on debts; at least 0; no heffingsvrij vermogen) is lower than the forfait voordeel, that werkelijk rendement is taxed instead. So the yearly tax is min(forfait tax, 36% × actual return).
+- **Heffingsvrij vermogen** — the box 3 wealth (after netting deductible debts) that the forfait leaves untaxed: €59,357 per person in 2026, indexed in the model with its inflation assumption.
+- **Schuldendrempel** — the part of box 3 debts that is not deductible: €3,800 per person in 2026, indexed like the heffingsvrij vermogen. The full DUO balance counts as a box 3 debt.
 - **Werkelijk rendement** — the planned box 3 regime (target 2029, not yet law): tax on actual annual return; gains on financial instruments (shares, funds, bonds) are taxed only when realised, while bank balances and debts are taxed on their annual result.
-- **Overig box 3-vermogen** — the user's box 3 wealth outside the strategy (e.g. existing savings not used as inleg); it decides how much of the heffingsvrij vermogen the strategy can use.
+- **Overig box 3-vermogen** — the user's box 3 wealth outside the strategy (e.g. existing savings not used as inleg), default €0; treated as banktegoeden and held constant in real terms. It decides how much of the heffingsvrij vermogen the strategy can use. Box 3 tax is taken from the strategy's pot at each year end, or from the surplus while the pot is empty.
 - **Eindvermogen** — the after-tax value of a strategy's pot at the end of the terugbetaalfase, with the pot treated as sold; by then the debt is either paid off or forgiven, so nothing is subtracted. The number strategies are scored on.
 - **Kwijtgescholden bedrag** — the debt left at the end of the term that is forgiven; shown for information, never added to eindvermogen.
 - **Euro's van nu** — amounts deflated to today's purchasing power with the model's price inflation assumption; the default unit for results.

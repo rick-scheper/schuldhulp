@@ -1,5 +1,6 @@
-import { EQUITY_INDICES, type EquityIndex, type FreedUpDestination } from '../engine';
-import { defaultTerPct, type InputDraft, type RateInfo } from './inputs';
+import { BOX3_FORFAIT_PARAMS, EQUITY_INDICES, type EquityIndex, type FreedUpDestination, type VastrentendProduct } from '../engine';
+import { formatEuro } from './format';
+import { defaultTerPct, pct, type InputDraft, type RateInfo } from './inputs';
 
 interface Props {
   draft: InputDraft;
@@ -66,6 +67,20 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             Optioneel, ongeveer je toetsingsinkomen. DUO begrenst je termijn dan op je draagkracht: 4% van je inkomen
             boven de draagkrachtvrije voet (€ 28.405,73 in 2027), met je inkomen van twee jaar eerder. Leeg: je betaalt
             het wettelijk maandbedrag.
+          </span>
+        </label>
+
+        <label className="field">
+          <span className="field-label">Overig box 3-vermogen</span>
+          <span className="input-wrap">
+            <span className="affix">€</span>
+            <input inputMode="decimal" placeholder="0" value={draft.overigVermogen} onChange={set('overigVermogen')} />
+          </span>
+          <span className="hint">
+            Optioneel: je spaargeld en beleggingen buiten je strategie, bijvoorbeeld spaargeld dat je niet als inleg
+            gebruikt. Telt als banktegoed en blijft in euro's van nu gelijk. Het gebruikt een deel van je heffingsvrij
+            vermogen ({formatEuro(BOX3_FORFAIT_PARAMS.heffingsvrijVermogen).replace(/,00$/, '')} in {BOX3_FORFAIT_PARAMS.year}), zodat je
+            strategie eerder box 3-belasting betaalt.
           </span>
         </label>
 
@@ -228,6 +243,22 @@ export function InputForm({ draft, onChange, rateInfo }: Props) {
             </select>
             <span className="hint">
               Waar je surplus en je oude termijn heen gaan zodra je schuld bij 100% extra aflossen is afbetaald.
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Soort vastrentend product</span>
+            <select
+              value={draft.vastrentendProduct}
+              onChange={(e) => onChange({ ...draft, vastrentendProduct: e.target.value as VastrentendProduct })}
+            >
+              <option value="deposito">Deposito</option>
+              <option value="staatsobligatie">Staatsobligatie</option>
+            </select>
+            <span className="hint">
+              Bepaalt de box 3-categorie: een deposito telt als banktegoed (fictief rendement{' '}
+              {pct(BOX3_FORFAIT_PARAMS.bankReturn, 2)}%), een staatsobligatie als overige bezitting (
+              {pct(BOX3_FORFAIT_PARAMS.overigeReturn, 2)}%).
             </span>
           </label>
         </div>

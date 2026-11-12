@@ -1,0 +1,14 @@
+{
+  "id": "d3-low",
+  "description": "Forfait + tegenbewijs: d2 holdings in a year the equities return 1%, below the forfait; the actual return is taxed",
+  "input": { "year": 2026, "equity": 120000, "vastrentend": 0, "vastrentendProduct": "deposito", "overig": 0, "debt": 25000, "actualReturn": 525 },
+  "expected": {
+    "bankRendement": 0, "overigeRendement": 7200, "aftrekbareSchulden": 21200, "debtRendement": 573,
+    "belastbaarRendement": 6627, "rendementsgrondslag": 98800, "grondslag": 39443, "aandeel": 0.3992, "voordeel": 2645, "tax": 189,
+    "werkelijkRendement": 525
+  },
+  "tolerance": { "taxAbs": 0 },
+  "source": "Hand calculation with the Belastingdienst 2026 box 3 method and rounding, https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/berekening-box-3-inkomen-2026 (tegenbewijs: https://www.belastingdienst.nl/wps/wcm/connect/nl/box-3/content/wat-is-mijn-werkelijk-rendement). The Belastingdienst publishes no interactive box 3 rekenhulp; the method and rounding are checked against its own 2026 rekenvoorbeelden 1 and 3 in box3.test.ts.",
+  "retrieved": "2026-11-12",
+  "derivation": "Forfait as d2: voordeel 2.645, tax 952. Werkelijk rendement: equities +1% × 120.000 = 1.200, minus DUO interest 25.000 × 2,70% = 675 → 525. 525 < 2.645, so tegenbewijs applies: tax 36% × 525 = 189."
+}

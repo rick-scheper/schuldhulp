@@ -1,5 +1,6 @@
 import { addMonths, type YearMonth } from '../time';
 import { createLoan, gridMonths, SF35_TERM_MONTHS, type LoanTerms } from '../duo/loan';
+import { createBox3Regime, type Box3Settings, type Box3Year, type Box3YearTax } from '../tax';
 import type { Market } from './market';
 import type { Strategy } from './strategy';
 
@@ -14,6 +15,11 @@ export interface PlanInput extends LoanTerms {
   inflation: number;
   /** Raise the surplus by `inflation` every 12 months. */
   indexSurplus: boolean;
+  /**
+   * Box 3 (#7, #23): the eindvermogen is after tax when given. Null or absent leaves the pots
+   * untaxed (pre-tax results, used by tests that check the cash flows on their own).
+   */
+  box3?: Box3Settings | null;
 }
 
 export interface StrategyMonth {
@@ -27,6 +33,10 @@ export interface StrategyMonth {
   balanceAfter: number;
   equityPot: number;
   vastrentendPot: number;
+  /** Box 3 tax levied this month (at the end of each calendar year), nominal. */
+  box3Tax: number;
+  /** Part of earlier box 3 tax the pots could not pay, taken from this month's money instead. */
+  taxFromSurplus: number;
 }
 
 export interface StrategyOutcome {
@@ -34,7 +44,10 @@ export interface StrategyOutcome {
   /** Length of the grid: months from today to the end of the terugbetaalfase. */
   months: number;
   endMonth: YearMonth;
-  /** Pre-tax pot value at the end of the terugbetaalfase, nominal. */
+  /**
+   * Pot value at the end of the terugbetaalfase, nominal: after box 3 when `box3` is given, with
+   * the pot treated as sold (no tax on the sale under the forfait).
+   */
   eindvermogenNominal: number;
   /** Same, in euro's van nu. */
   eindvermogenReal: number;
@@ -48,7 +61,13 @@ export interface StrategyOutcome {
   debtFreeMonth: YearMonth | null;
   totalExtraAflossen: number;
   totalInvested: number;
+  /** Box 3 tax over the whole term, nominal (sum of the yearly amounts). */
+  box3TaxNominal: number;
+  /** Same, each year's tax deflated from the month it was paid: in euro's van nu. */
+  box3TaxReal: number;
   trace?: StrategyMonth[];
+  /** The box 3 calculation per calendar year (with `trace`). */
+  box3Years?: Box3YearTax[];
 }
 
 export interface SimulateOptions {
@@ -93,6 +112,11 @@ export function referencePayments(p: PlanInput): Float64Array {
  *    month over the months left, so the end date stays fixed (the best case, #14). It is also
  *    recalculated at the statutory points (Wsf art. 6.9) and after a capped year (art. 6.15).
  * 6. Debt left after the last month is the kwijtgescholden bedrag; it never adds to the eindvermogen.
+ * 7. Box 3 (when `p.box3` is given): in the last month of each calendar year (December, or the
+ *    last month of the term) the year's tax is computed from the 1 January holdings and the
+ *    year's actual result, and taken from the pots pro rata. What the pots cannot pay is taken
+ *    from the next months' money (surplus and vrijgekomen geld) before it is allocated; anything
+ *    still unpaid at the end comes off the eindvermogen. The kwijtschelding is tax-free (#7).
  */
 export function simulateStrategy(
   p: PlanInput,
@@ -142,6 +166,19 @@ function run(
   let totalInvested = 0;
   const rows: StrategyMonth[] | undefined = trace ? [] : undefined;
 
+  // Box 3 bookkeeping per calendar year.
+  const box3 = p.box3 ? createBox3Regime(p.box3, p.inflation) : null;
+  const overigAt = (year: number) =>
+    p.box3 ? p.box3.overigVermogen * Math.pow(1 + p.inflation, year - p.today.year) : 0;
+  let jan1: Box3Year['jan1'] = { equity: 0, vastrentend: 0, overig: overigAt(p.today.year), debt: loan.balance };
+  let equityDeposits = 0;
+  let vastrentendDeposits = 0;
+  let debtInterest = 0;
+  let taxArrears = 0;
+  let totalTaxNominal = 0;
+  let totalTaxReal = 0;
+  const box3Years: Box3YearTax[] | undefined = trace && box3 ? [] : undefined;
+
   for (let i = 0; i < n; i++) {
     equityPot *= market.equityGrowth(i);
     vastrentendPot *= market.vastrentendGrowth(i);
@@ -154,7 +191,11 @@ function run(
     // Allocation: every strategy spends the reference termijn + surplus (+ inleg).
     const surplus = p.indexSurplus ? p.surplus * Math.pow(1 + p.inflation, Math.floor(i / 12)) : p.surplus;
     const budget = (ref ? (ref[i] ?? 0) : termijnPaid) + surplus + (i === 0 ? p.inleg : 0);
-    const allocatable = Math.max(0, budget - termijnPaid);
+    let allocatable = Math.max(0, budget - termijnPaid);
+    // Box 3 tax the pots could not pay comes first.
+    const taxFromSurplus = Math.min(taxArrears, allocatable);
+    taxArrears -= taxFromSurplus;
+    allocatable -= taxFromSurplus;
 
     const extra = loan.balance > 0 ? loan.extraAflossen(allocatable * strategy.aflossenShare) : 0;
     const invested = allocatable - extra;
@@ -165,6 +206,46 @@ function run(
 
     if (loan.balance === 0 && debtFreeMonth === null) debtFreeMonth = m.month;
 
+    let box3Tax = 0;
+    if (box3) {
+      equityDeposits += invested * strategy.equityShare;
+      vastrentendDeposits += invested * (1 - strategy.equityShare);
+      debtInterest += m.interest;
+      const final = i === n - 1;
+      if (m.month.month === 12 || final) {
+        const year = m.month.year;
+        const overigNext = overigAt(year + 1);
+        const y = box3.taxForYear({
+          year,
+          jan1,
+          result: {
+            equity: equityPot - jan1.equity - equityDeposits,
+            vastrentend: vastrentendPot - jan1.vastrentend - vastrentendDeposits,
+            overig: overigNext - jan1.overig,
+          },
+          debtInterest,
+          final,
+        });
+        box3Years?.push(y);
+        box3Tax = y.tax;
+        totalTaxNominal += y.tax;
+        totalTaxReal += toEurosVanNu(y.tax, i + 1, p.inflation);
+        // Pay from the pots pro rata; the rest comes from the next months' money.
+        const pot = equityPot + vastrentendPot;
+        const fromPot = Math.min(y.tax, pot);
+        if (fromPot > 0) {
+          const keep = (pot - fromPot) / pot;
+          equityPot *= keep;
+          vastrentendPot *= keep;
+        }
+        taxArrears += y.tax - fromPot;
+        jan1 = { equity: equityPot, vastrentend: vastrentendPot, overig: overigNext, debt: loan.balance };
+        equityDeposits = 0;
+        vastrentendDeposits = 0;
+        debtInterest = 0;
+      }
+    }
+
     rows?.push({
       month: m.month,
       termijn: termijnPaid > 0 ? m.termijn : 0,
@@ -174,10 +255,12 @@ function run(
       balanceAfter: loan.balance,
       equityPot,
       vastrentendPot,
+      box3Tax,
+      taxFromSurplus,
     });
   }
 
-  const nominal = equityPot + vastrentendPot;
+  const nominal = equityPot + vastrentendPot - taxArrears;
   return {
     strategy,
     months: n,
@@ -191,6 +274,9 @@ function run(
     debtFreeMonth,
     totalExtraAflossen: totalExtra,
     totalInvested,
+    box3TaxNominal: totalTaxNominal,
+    box3TaxReal: totalTaxReal,
     ...(rows ? { trace: rows } : {}),
+    ...(box3Years ? { box3Years } : {}),
   };
 }

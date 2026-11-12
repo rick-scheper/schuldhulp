@@ -123,6 +123,41 @@ describe('App', () => {
     });
   });
 
+  describe('box 3 (#23)', () => {
+    const fill = (surplus = '1.000') => {
+      render(<App today={ym(2027, 1)} />);
+      fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: '30.000' } });
+      fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+      fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: surplus } });
+    };
+    const euros = (id: string) => Number(screen.getByTestId(id).textContent!.replace(/[^\d,]/g, '').replace(',', '.'));
+
+    it('shows the eindvermogen after box 3 and the box 3 tax per strategy', () => {
+      fill();
+      expect(screen.getByRole('region', { name: 'Strategieën' }).textContent).toMatch(/na box 3-belasting/);
+      expect(euros('box3-aandelen')).toBeGreaterThan(0);
+    });
+
+    it('takes an optional overig box 3-vermogen that raises the tax', () => {
+      fill();
+      const before = euros('box3-aandelen');
+      const eind = euros('eindvermogen-aandelen');
+      fireEvent.change(screen.getByLabelText(/Overig box 3-vermogen/), { target: { value: '50.000' } });
+      expect(euros('box3-aandelen')).toBeGreaterThan(before);
+      expect(euros('eindvermogen-aandelen')).toBeLessThan(eind);
+    });
+
+    it('offers the vastrentend product type under Geavanceerd: deposito by default, staatsobligatie taxed more', () => {
+      fill();
+      const select = screen.getByLabelText(/Soort vastrentend product/) as HTMLSelectElement;
+      expect(select.closest('details')?.querySelector('summary')?.textContent).toBe('Geavanceerd');
+      expect(select.value).toBe('deposito');
+      const deposito = euros('box3-vastrentend');
+      fireEvent.change(select, { target: { value: 'staatsobligatie' } });
+      expect(euros('box3-vastrentend')).toBeGreaterThan(deposito);
+    });
+  });
+
   describe('DUO rate and rentevaste periodes (#22)', () => {
     const fill = (today: ReturnType<typeof ym>, repaymentStart: string) => {
       render(<App today={today} />);
