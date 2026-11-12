@@ -197,3 +197,46 @@ describe('constant-return mode as a reference', () => {
     expect(at(0.1)).toBeGreaterThan(0);
   });
 });
+
+describe('draagkracht and kwijtschelding (#21)', () => {
+  const capped: PlanInput = { ...plan, debt: 60_000, income: { income: 50_000, growth: 0.024 } };
+
+  it('follows the capped DUO schedule on the 0%-aflossen debt path', () => {
+    const schedule = buildConstantRateSchedule(capped);
+    const r = simulateStrategy(capped, VASTRENTEND_STRATEGY, market, { trace: true });
+    expect(schedule.draagkrachtCaps).toBe(true);
+    expect(r.trace!.map((m) => m.termijnPaid)).toEqual(schedule.months.map((m) => m.payment));
+    expect(r.kwijtgescholden).toBe(schedule.kwijtgescholden);
+    expect(r.kwijtgescholden).toBeGreaterThan(0);
+  });
+
+  it('never adds the kwijtgescholden bedrag to the eindvermogen', () => {
+    const r = simulateStrategy(capped, VASTRENTEND_STRATEGY, market);
+    expect(r.eindvermogenNominal).toBeCloseTo(fvAnnuity(200, monthlyGrowth(0.04), 420), 6);
+    expect(r.eindvermogenNominal).toBe(r.equityPot + r.vastrentendPot);
+  });
+
+  it('keeps every strategy cash-equal under the cap', () => {
+    const ref = buildConstantRateSchedule(capped).months;
+    for (const s of standardStrategies({ mixAflossenShare: 0.5, mixEquityShare: 0.6 })) {
+      const r = simulateStrategy(capped, s, market, { trace: true });
+      r.trace!.forEach((m, i) => {
+        expect(m.termijnPaid + m.extraAflossen + m.invested).toBeCloseTo(ref[i]!.payment + 200, 6);
+      });
+    }
+  });
+
+  it('extra aflossen mainly shrinks the kwijtgescholden bedrag when draagkracht caps the termijn', () => {
+    const [base, vast] = compareStrategies(capped, [aflossenStrategy(), VASTRENTEND_STRATEGY], market);
+    expect(base!.kwijtgescholden).toBeLessThan(vast!.kwijtgescholden);
+    // the 100%-vastrentend path pays only the capped termijn, so it ends with more money
+    expect(vast!.eindvermogenNominal).toBeGreaterThan(base!.eindvermogenNominal);
+  });
+
+  it('with an empty income behaves exactly as without draagkracht', () => {
+    const a = simulateStrategy({ ...plan, income: null }, mixStrategy(0.5, 0.5), market);
+    const b = simulateStrategy(plan, mixStrategy(0.5, 0.5), market);
+    expect(a.eindvermogenNominal).toBe(b.eindvermogenNominal);
+    expect(a.kwijtgescholden).toBe(b.kwijtgescholden);
+  });
+});

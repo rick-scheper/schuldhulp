@@ -2,12 +2,14 @@ import { parseDutchNumber } from './format';
 import {
   DEFAULT_EQUITY_INDEX,
   DEFAULT_EQUITY_RETURN,
+  DEFAULT_INCOME_GROWTH,
   DEFAULT_INFLATION,
   DEFAULT_VASTRENTEND_RATE,
   EQUITY_INDICES,
   parseYearMonth,
   type EquityIndex,
   type FreedUpDestination,
+  type IncomePath,
   type ReturnAssumptions,
   type YearMonth,
 } from '../engine';
@@ -19,6 +21,8 @@ export interface InputDraft {
   surplus: string;
   ratePct: string;
   inleg: string;
+  /** Gross yearly income (≈ toetsingsinkomen); empty = no draagkracht. */
+  income: string;
   equityIndex: EquityIndex;
   vastrentendPct: string;
   /** Mix slider: % of the money to extra aflossen. */
@@ -29,6 +33,7 @@ export interface InputDraft {
   equityReturnPct: string;
   terPct: string;
   inflationPct: string;
+  incomeGrowthPct: string;
   indexSurplus: boolean;
   freedUpDestination: FreedUpDestination;
 }
@@ -51,6 +56,7 @@ export const EMPTY_DRAFT: InputDraft = {
   surplus: '',
   ratePct: DEFAULT_RATE_PCT,
   inleg: '',
+  income: '',
   equityIndex: DEFAULT_EQUITY_INDEX,
   vastrentendPct: pct(DEFAULT_VASTRENTEND_RATE),
   mixAflossenPct: 50,
@@ -58,6 +64,7 @@ export const EMPTY_DRAFT: InputDraft = {
   equityReturnPct: pct(DEFAULT_EQUITY_RETURN),
   terPct: defaultTerPct(DEFAULT_EQUITY_INDEX),
   inflationPct: pct(DEFAULT_INFLATION),
+  incomeGrowthPct: pct(DEFAULT_INCOME_GROWTH),
   indexSurplus: true,
   freedUpDestination: 'aandelen',
 };
@@ -68,6 +75,8 @@ export interface ParsedInputs {
   surplus: number;
   annualRate: number;
   inleg: number;
+  /** Null when no income was entered: no draagkracht cap. */
+  income: IncomePath | null;
   inflation: number;
   indexSurplus: boolean;
   returns: ReturnAssumptions;
@@ -92,6 +101,8 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
   const equityReturn = parsePct(d.equityReturnPct, 30);
   const ter = parsePct(d.terPct, 5);
   const inflation = parsePct(d.inflationPct, 20);
+  const income = d.income.trim() === '' ? undefined : parseDutchNumber(d.income);
+  const incomeGrowth = parsePct(d.incomeGrowthPct, 20);
   if (
     debt === null ||
     repaymentStart === null ||
@@ -101,7 +112,9 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     vastrentendRate === null ||
     equityReturn === null ||
     ter === null ||
-    inflation === null
+    inflation === null ||
+    income === null ||
+    incomeGrowth === null
   ) {
     return null;
   }
@@ -111,6 +124,7 @@ export function parseInputs(d: InputDraft): ParsedInputs | null {
     surplus,
     annualRate,
     inleg,
+    income: income === undefined ? null : { income, growth: incomeGrowth },
     inflation,
     indexSurplus: d.indexSurplus,
     returns: { equityReturn, ter, vastrentendRate },

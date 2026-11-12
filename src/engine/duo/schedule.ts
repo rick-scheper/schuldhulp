@@ -1,60 +1,36 @@
-import { addMonths, monthsBetween, type YearMonth } from '../time';
-import { annuityPayment, monthlyRate } from './annuity';
+import { addMonths, type YearMonth } from '../time';
+import { createLoan, gridMonths, SF35_TERM_MONTHS, type LoanTerms, type Recalculation } from './loan';
 
-/** SF35 terugbetaalfase: 35 years (Wsf art. 6.7). Aflosvrije months are out of scope for v1. */
-export const SF35_TERM_MONTHS = 35 * 12;
+export { isRecalculationYear, SF35_TERM_MONTHS, type Recalculation, type RecalculationKind } from './loan';
 
-/** Balances below this are float noise, not debt. */
-const EPSILON = 1e-6;
-
-/**
- * Whether DUO recalculates the wettelijk maandbedrag at the start of this repayment year
- * (1-based): years 1 and 4, then every 5 years — 1, 4, 9, 14, …, 34 (Wsf art. 6.9 lid 2).
- */
-export function isRecalculationYear(repaymentYear: number): boolean {
-  return repaymentYear === 1 || (repaymentYear >= 4 && (repaymentYear - 4) % 5 === 0);
-}
-
-export interface ConstantRateScheduleInput {
-  /** Current studieschuld in euros (principal + accrued interest) at `today`. */
-  debt: number;
-  /** DUO rate as a fraction (0.027 = 2.70%), constant over the whole remaining term. */
-  annualRate: number;
-  /** First month of the terugbetaalfase. */
-  repaymentStart: YearMonth;
-  /** The month the debt is valued at. Injected so the engine stays pure. */
-  today: YearMonth;
-  /** Defaults to SF35_TERM_MONTHS. */
-  termMonths?: number;
-}
+export type ConstantRateScheduleInput = LoanTerms;
 
 export interface ScheduleMonth {
   month: YearMonth;
   /** 1-based year of the terugbetaalfase. */
   repaymentYear: number;
   /** The wettelijk maandbedrag in force this month. */
+  wettelijkMaandbedrag: number;
+  /** The draagkracht cap this month, or null without income. */
+  draagkracht: number | null;
+  /** What is due: the wettelijk maandbedrag, unless draagkracht caps it lower. */
   termijn: number;
   interest: number;
   /** What was actually paid: the termijn, or less in the final month. */
   payment: number;
+  capped: boolean;
   balanceAfter: number;
-}
-
-export interface Recalculation {
-  month: YearMonth;
-  repaymentYear: number;
-  /** `start` = the first month the model simulates; `statutory` = a Wsf art. 6.9 point. */
-  kind: 'start' | 'statutory';
-  remainingMonths: number;
-  debt: number;
-  termijn: number;
 }
 
 export interface ConstantRateSchedule {
   months: ScheduleMonth[];
   recalculations: Recalculation[];
   /** The wettelijk maandbedrag in force in the first simulated month. */
+  wettelijkMaandbedrag: number;
+  /** The termijn due in the first simulated month (after any draagkracht cap). */
   termijn: number;
+  /** Whether draagkracht caps the termijn in any month. */
+  draagkrachtCaps: boolean;
   /** Debt when the first simulated payment falls due (after any interest accrued before the terugbetaalfase). */
   debtAtFirstPayment: number;
   remainingMonths: number;
@@ -62,75 +38,67 @@ export interface ConstantRateSchedule {
   endMonth: YearMonth;
   totalPaid: number;
   totalInterest: number;
-  /** Debt left at the end of the term, forgiven (kwijtschelding). */
+  /** Debt left at the end of the term, forgiven (kwijtschelding, Wsf art. 6.16). */
   kwijtgescholden: number;
 }
 
 /**
- * The wettelijk maandbedrag schedule at a constant DUO rate, from `today` to the end of the term.
+ * The DUO schedule at a constant rate, from `today` to the end of the term: the 0%-aflossen
+ * debt path.
  *
  * - Before the terugbetaalfase, interest accrues monthly until `repaymentStart`.
- * - The termijn is set in the first simulated month from the current debt over the months left,
- *   and recalculated at the start of repayment years 1, 4, 9, …, 34.
- *   Starting mid-period, DUO's actual termijn was set at the last recalculation point; at a
+ * - The wettelijk maandbedrag is set in the first simulated month from the current debt over the
+ *   months left, and recalculated at the start of repayment years 1, 4, 9, …, 34.
+ *   Starting mid-period, DUO's actual amount was set at the last recalculation point; at a
  *   constant rate with no extra payments that amount equals the annuity on today's debt.
+ * - With an income, draagkracht caps the termijn (art. 6.10), and after a capped year the
+ *   wettelijk maandbedrag is recalculated on 1 January (art. 6.15).
  * - Whatever is left after the last month is the kwijtgescholden bedrag.
  */
 export function buildConstantRateSchedule(input: ConstantRateScheduleInput): ConstantRateSchedule {
   const termMonths = input.termMonths ?? SF35_TERM_MONTHS;
-  const rate = monthlyRate(input.annualRate);
   const endMonth = addMonths(input.repaymentStart, termMonths - 1);
-
-  const monthsUntilStart = monthsBetween(input.today, input.repaymentStart);
-  const firstOffset = Math.max(0, -monthsUntilStart); // months of terugbetaalfase already behind us
-  const debtAtFirstPayment = input.debt * Math.pow(1 + rate, Math.max(0, monthsUntilStart));
-  const remainingMonths = Math.max(0, termMonths - firstOffset);
+  const loan = createLoan(input);
+  const n = gridMonths(input);
 
   const months: ScheduleMonth[] = [];
   const recalculations: Recalculation[] = [];
-  let balance = debtAtFirstPayment;
-  let termijn = 0;
+  let debtAtFirstPayment = input.debt;
   let totalPaid = 0;
   let totalInterest = 0;
 
-  for (let offset = firstOffset; offset < termMonths; offset++) {
-    const month = addMonths(input.repaymentStart, offset);
-    const repaymentYear = Math.floor(offset / 12) + 1;
-    const left = termMonths - offset;
-
-    const isStart = offset === firstOffset;
-    const isStatutory = offset % 12 === 0 && isRecalculationYear(repaymentYear);
-    if (isStart || isStatutory) {
-      termijn = annuityPayment(balance, rate, left);
-      recalculations.push({
-        month,
-        repaymentYear,
-        kind: isStatutory ? 'statutory' : 'start',
-        remainingMonths: left,
-        debt: balance,
-        termijn,
-      });
-    }
-
-    const interest = balance * rate;
-    const payment = Math.min(termijn, balance + interest);
-    balance = balance + interest - payment;
-    if (balance < EPSILON) balance = 0;
-
-    totalInterest += interest;
-    totalPaid += payment;
-    months.push({ month, repaymentYear, termijn, interest, payment, balanceAfter: balance });
+  for (let i = 0; i < n; i++) {
+    const before = loan.balance;
+    const m = loan.step();
+    if (m.offset < 0) continue;
+    if (months.length === 0) debtAtFirstPayment = before;
+    if (m.recalculation) recalculations.push(m.recalculation);
+    totalInterest += m.interest;
+    totalPaid += m.payment;
+    months.push({
+      month: m.month,
+      repaymentYear: m.repaymentYear,
+      wettelijkMaandbedrag: m.wettelijkMaandbedrag,
+      draagkracht: m.draagkracht,
+      termijn: m.termijn,
+      interest: m.interest,
+      payment: m.payment,
+      capped: m.capped,
+      balanceAfter: m.balanceAfter,
+    });
   }
 
   return {
     months,
     recalculations,
-    termijn: recalculations[0]?.termijn ?? 0,
+    wettelijkMaandbedrag: months[0]?.wettelijkMaandbedrag ?? 0,
+    termijn: months[0]?.termijn ?? 0,
+    draagkrachtCaps: months.some((m) => m.capped),
     debtAtFirstPayment,
-    remainingMonths,
+    remainingMonths: months.length,
     endMonth,
     totalPaid,
     totalInterest,
-    kwijtgescholden: balance,
+    kwijtgescholden: loan.balance,
   };
 }

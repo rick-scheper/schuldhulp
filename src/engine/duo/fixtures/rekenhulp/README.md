@@ -55,4 +55,20 @@ Run each case in the live rekenhulp, commit a screenshot next to the fixture
 (`case-N.png`), set `screenshot` to its file name, and replace the `source` note with
 "DUO rekenhulp, hand run".
 
-Case 5 (draagkracht caps the termijn, ending in kwijtschelding) belongs to #21.
+Case 5 (draagkracht caps the termijn, ending in kwijtschelding) is below.
+
+## Case 5: draagkracht and kwijtschelding (#21)
+
+The rekenhulp does take income: with an income it computes the draagkracht per month in
+function `Fx` (4% above 100% WML for SF35 "ik woon alleen", WML from
+`https://duo.nl/particulier/wizard-studiefinanciering/normen.json`, `belastbaar_minimumloon`
+€28,405.73) and pays `min(draagkracht, annuity over the months left)` each month in `zh`.
+The restschuld it shows is the simulated balance after the last month.
+
+| Case | Input | Termijn | Total paid | Kwijtgescholden |
+|---|---|---|---|---|
+| 5 | €60,000, 2.70%, 420 months, income €50,000 | €71.98 | €30,231.98 | €102,547.62 |
+
+The rekenhulp holds income and voet constant, so the fixture sets `incomeGrowth` and
+`voetGrowth` to 0. The full hand derivation (closed form, Wsf art. 6.10 / 6.15) is in the
+fixture's `derivation` field; it agrees with the replay of the rekenhulp code to the cent.

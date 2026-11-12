@@ -27,6 +27,37 @@ describe('App', () => {
     expect(within(screen.getByRole('region', { name: 'Uitkomst' })).getAllByRole('row')).toHaveLength(1 + 8);
   });
 
+  describe('draagkracht (#21)', () => {
+    const fill = (income: string) => {
+      render(<App today={ym(2027, 1)} />);
+      fireEvent.change(screen.getByLabelText(/Huidige studieschuld/), { target: { value: '60.000' } });
+      fireEvent.change(screen.getByLabelText(/Start terugbetaalfase/), { target: { value: '2027-01' } });
+      fireEvent.change(screen.getByLabelText(/Maandelijks surplus/), { target: { value: '200' } });
+      fireEvent.change(screen.getByLabelText(/Bruto jaarinkomen/), { target: { value: income } });
+    };
+    const text = (id: string) => screen.getByTestId(id).textContent!.replace(/\s/g, ' ');
+
+    it('applies the wettelijk maandbedrag when the income is empty', () => {
+      fill('');
+      expect(text('termijn')).toBe('€ 219,91');
+      expect(text('kwijtgescholden')).toBe('€ 0,00');
+    });
+
+    it('caps the termijn by draagkracht and shows the kwijtgescholden bedrag apart from the eindvermogen', () => {
+      fill('50.000');
+      fireEvent.change(screen.getByLabelText(/Inkomensgroei/), { target: { value: '0' } });
+      expect(text('termijn')).toBe('€ 71,98');
+      expect(text('termijn-hint')).toMatch(/draagkracht/);
+      expect(screen.getByTestId('kwijtgescholden').textContent).not.toMatch(/0,00/);
+      expect(screen.getByRole('region', { name: 'Strategieën' }).textContent).toMatch(/telt niet mee in je eindvermogen/);
+    });
+
+    it('offers income growth under Geavanceerd, 2,4% by default', () => {
+      fill('50.000');
+      expect((screen.getByLabelText(/Inkomensgroei/) as HTMLInputElement).value).toBe('2,4');
+    });
+  });
+
   describe('strategies', () => {
     const fill = () => {
       render(<App today={ym(2027, 1)} />);

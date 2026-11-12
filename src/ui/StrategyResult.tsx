@@ -71,6 +71,10 @@ export function StrategyResult({ outcomes }: { outcomes: ComparedOutcome[] }) {
         </table>
       </div>
       <p className="hint">
+        Kwijtgescholden: de schuld die aan het eind van je terugbetaalfase nog openstaat en die DUO kwijtscheldt. Dat
+        bedrag telt niet mee in je eindvermogen.
+      </p>
+      <p className="hint">
         Extra aflossen rekent met het gunstigste geval: DUO berekent je termijn na elke extra betaling opnieuw, vanaf de
         volgende maand, met dezelfde einddatum. Dat moet je zelf bij DUO aanvragen, en kleine bedragen komen daar
         mogelijk niet voor in aanmerking. Wat je minder aan termijn betaalt, gaat naar je strategie, zodat elke strategie

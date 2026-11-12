@@ -1,23 +1,11 @@
-import { addMonths, monthsBetween, type YearMonth } from '../time';
-import { annuityPayment, monthlyRate } from '../duo/annuity';
-import { isRecalculationYear, SF35_TERM_MONTHS } from '../duo/schedule';
+import { addMonths, type YearMonth } from '../time';
+import { createLoan, gridMonths, SF35_TERM_MONTHS, type LoanTerms } from '../duo/loan';
 import type { Market } from './market';
 import type { Strategy } from './strategy';
 
-/** Balances below this are float noise, not debt. */
-const EPSILON = 1e-6;
+export { gridMonths } from '../duo/loan';
 
-export interface PlanInput {
-  /** Current studieschuld in euros at `today`. */
-  debt: number;
-  /** DUO rate as a fraction, constant over the remaining term (a rentepad comes with #22). */
-  annualRate: number;
-  /** First month of the terugbetaalfase. */
-  repaymentStart: YearMonth;
-  /** First month of the simulation grid. Injected so the engine stays pure. */
-  today: YearMonth;
-  /** Defaults to SF35_TERM_MONTHS. */
-  termMonths?: number;
+export interface PlanInput extends LoanTerms {
   /** Monthly surplus on top of the required termijn, in today's euros. */
   surplus: number;
   /** One-off amount allocated in the first month, split like the surplus. */
@@ -78,12 +66,6 @@ export function toEurosVanNu(nominal: number, months: number, inflation: number)
   return nominal / Math.pow(1 + inflation, months / 12);
 }
 
-/** Number of months on the grid: from `today` to the last month of the terugbetaalfase. */
-export function gridMonths(p: Pick<PlanInput, 'today' | 'repaymentStart' | 'termMonths'>): number {
-  const endMonth = addMonths(p.repaymentStart, (p.termMonths ?? SF35_TERM_MONTHS) - 1);
-  return Math.max(0, monthsBetween(p.today, endMonth) + 1);
-}
-
 /**
  * The termijn each month on the 0%-aflossen debt path: the debt path every strategy without
  * extra aflossen follows. The same for every such strategy, so it needs only one run (#8).
@@ -100,7 +82,8 @@ export function referencePayments(p: PlanInput): Float64Array {
  *
  * Each month, in this order:
  * 1. The pots grow by the market's factor for the month.
- * 2. Interest accrues on the debt and the required termijn is paid (none in the aanloopfase).
+ * 2. Interest accrues on the debt and the required termijn is paid (none in the aanloopfase):
+ *    the wettelijk maandbedrag, capped by draagkracht when an income is given (see duo/loan.ts).
  * 3. The money to allocate is the reference termijn + the surplus (+ the inleg in month 0)
  *    minus the termijn this strategy paid. So it holds the surplus plus any vrijgekomen geld.
  * 4. While there is debt, `aflossenShare` of it goes to extra aflossen (never more than the
@@ -108,7 +91,8 @@ export function referencePayments(p: PlanInput): Float64Array {
  *    After the debt is cleared, everything is invested.
  * 5. After an extra payment in the terugbetaalfase the termijn is recalculated from the next
  *    month over the months left, so the end date stays fixed (the best case, #14). It is also
- *    recalculated at the statutory points (Wsf art. 6.9).
+ *    recalculated at the statutory points (Wsf art. 6.9) and after a capped year (art. 6.15).
+ * 6. Debt left after the last month is the kwijtgescholden bedrag; it never adds to the eindvermogen.
  */
 export function simulateStrategy(
   p: PlanInput,
@@ -149,42 +133,22 @@ function run(
   const termMonths = p.termMonths ?? SF35_TERM_MONTHS;
   const endMonth = addMonths(p.repaymentStart, termMonths - 1);
   const n = gridMonths(p);
-  const rate = monthlyRate(p.annualRate);
-  const firstOffset = monthsBetween(p.repaymentStart, p.today); // < 0 in the aanloopfase
+  const loan = createLoan(p);
 
-  let balance = p.debt;
-  let termijn = 0;
-  let recalcPending = false;
   let equityPot = 0;
   let vastrentendPot = 0;
-  let debtFreeMonth: YearMonth | null = balance < EPSILON ? p.today : null;
+  let debtFreeMonth: YearMonth | null = loan.balance <= 0 ? p.today : null;
   let totalExtra = 0;
   let totalInvested = 0;
   const rows: StrategyMonth[] | undefined = trace ? [] : undefined;
 
   for (let i = 0; i < n; i++) {
-    const offset = firstOffset + i; // months since the start of the terugbetaalfase
-    const month = addMonths(p.today, i);
-
     equityPot *= market.equityGrowth(i);
     vastrentendPot *= market.vastrentendGrowth(i);
 
-    // Debt: interest, then the required termijn.
-    let termijnPaid = 0;
-    if (balance > 0) {
-      const interest = balance * rate;
-      if (offset >= 0) {
-        const isStart = offset === Math.max(0, firstOffset);
-        const isStatutory = offset % 12 === 0 && isRecalculationYear(Math.floor(offset / 12) + 1);
-        if (isStart || isStatutory || recalcPending) {
-          termijn = annuityPayment(balance, rate, termMonths - offset);
-          recalcPending = false;
-        }
-        termijnPaid = Math.min(termijn, balance + interest);
-      }
-      balance = balance + interest - termijnPaid;
-      if (balance < EPSILON) balance = 0;
-    }
+    // Debt: interest, then the required termijn (capped by draagkracht).
+    const m = loan.step();
+    const termijnPaid = m.payment;
     if (recordPayments) recordPayments[i] = termijnPaid;
 
     // Allocation: every strategy spends the reference termijn + surplus (+ inleg).
@@ -192,32 +156,25 @@ function run(
     const budget = (ref ? (ref[i] ?? 0) : termijnPaid) + surplus + (i === 0 ? p.inleg : 0);
     const allocatable = Math.max(0, budget - termijnPaid);
 
-    let extra = 0;
-    if (balance > 0) {
-      extra = Math.min(allocatable * strategy.aflossenShare, balance);
-      balance -= extra;
-      if (balance < EPSILON) balance = 0;
-      if (extra > 0 && balance > 0 && offset >= 0) recalcPending = true;
-    }
+    const extra = loan.balance > 0 ? loan.extraAflossen(allocatable * strategy.aflossenShare) : 0;
     const invested = allocatable - extra;
     equityPot += invested * strategy.equityShare;
     vastrentendPot += invested * (1 - strategy.equityShare);
     totalExtra += extra;
     totalInvested += invested;
 
-    if (balance === 0 && debtFreeMonth === null) debtFreeMonth = month;
+    if (loan.balance === 0 && debtFreeMonth === null) debtFreeMonth = m.month;
 
     rows?.push({
-      month,
-      termijn: termijnPaid > 0 ? termijn : 0,
+      month: m.month,
+      termijn: termijnPaid > 0 ? m.termijn : 0,
       termijnPaid,
       extraAflossen: extra,
       invested,
-      balanceAfter: balance,
+      balanceAfter: loan.balance,
       equityPot,
       vastrentendPot,
     });
-    if (balance === 0) termijn = 0;
   }
 
   const nominal = equityPot + vastrentendPot;
@@ -229,8 +186,8 @@ function run(
     eindvermogenReal: toEurosVanNu(nominal, n, p.inflation),
     equityPot,
     vastrentendPot,
-    restschuld: balance,
-    kwijtgescholden: balance,
+    restschuld: loan.balance,
+    kwijtgescholden: loan.balance,
     debtFreeMonth,
     totalExtraAflossen: totalExtra,
     totalInvested,

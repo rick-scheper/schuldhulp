@@ -8,7 +8,10 @@
 - **Termijn** — the monthly amount actually due to DUO: the wettelijk maandbedrag, unless draagkracht caps it lower.
 - **Rentevaste periode** — the 5-year block during the terugbetaalfase in which the DUO rate stays fixed; a new rate applies at each block reset. Before the terugbetaalfase the rate resets yearly.
 - **Rentepad** — the sequence of DUO rates a borrower faces over the remaining term in one scenario, derived from that scenario's 5-year government bond yield.
-- **Draagkracht** — income-based cap on the monthly payment (SF35: 4% of income above a minimum-wage threshold).
+- **Draagkracht** — income-based cap on the monthly payment (SF35: 4% of the toetsingsinkomen above the draagkrachtvrije voet, per year, divided over 12 months; Wsf art. 6.10). After a year in which draagkracht capped the termijn, DUO recalculates the wettelijk maandbedrag on 1 January over the months left (art. 6.15). With no income entered there is no cap.
+- **Draagkrachtvrije voet** — the income threshold above which draagkracht starts: for SF35 100% of the minimum wage for a single debtor without children (€28,405.73 in 2027). v1 models only the single case and indexes the voet with wage growth (2.4%).
+- **Peiljaar** — the year whose income DUO uses for draagkracht: two calendar years before the year of the termijn (t−2, Wsf art. 6.12).
+- **Inkomensgroei** — the yearly nominal growth of the user's income path (default 2.4%, CP wage inflation); set under Geavanceerd.
 - **Aflosvrije periode** — up to 60 months the borrower may skip repayment; interest keeps accruing and the term is extended by the months used.
 - **Kwijtschelding** — forgiveness of the remaining debt at the end of the term.
 - **Extra aflossen** — voluntary repayment above the monthly amount (the "pay off" strategy).

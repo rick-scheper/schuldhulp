@@ -1,5 +1,6 @@
 import { ym, addMonths } from '../time';
 import { buildConstantRateSchedule, SF35_TERM_MONTHS } from './schedule';
+import { SF35_DRAAGKRACHT } from './draagkracht';
 import { loadRekenhulpFixtures } from './fixtures/rekenhulp';
 
 /**
@@ -9,8 +10,8 @@ import { loadRekenhulpFixtures } from './fixtures/rekenhulp';
 describe('DUO rekenhulp cases (#16 b)', () => {
   const fixtures = loadRekenhulpFixtures();
 
-  it('has cases 1–4', () => {
-    expect(fixtures.map((f) => f.id)).toEqual(['case-1', 'case-2', 'case-3', 'case-4']);
+  it('has cases 1–5', () => {
+    expect(fixtures.map((f) => f.id)).toEqual(['case-1', 'case-2', 'case-3', 'case-4', 'case-5']);
   });
 
   for (const f of fixtures) {
@@ -22,6 +23,8 @@ describe('DUO rekenhulp cases (#16 b)', () => {
         annualRate: f.input.annualRatePct / 100,
         repaymentStart,
         today,
+        income: f.input.income === null ? null : { income: f.input.income, growth: f.input.incomeGrowth ?? 0 },
+        draagkrachtRules: { ...SF35_DRAAGKRACHT, voetGrowth: f.input.voetGrowth ?? 0 },
       });
 
       expect(Math.abs(s.termijn - f.expected.termijn)).toBeLessThanOrEqual(f.tolerance.termijnAbs);

@@ -55,6 +55,19 @@ export function InputForm({ draft, onChange }: Props) {
         </label>
 
         <label className="field">
+          <span className="field-label">Bruto jaarinkomen</span>
+          <span className="input-wrap">
+            <span className="affix">€</span>
+            <input inputMode="decimal" placeholder="leeg = geen draagkracht" value={draft.income} onChange={set('income')} />
+          </span>
+          <span className="hint">
+            Optioneel, ongeveer je toetsingsinkomen. DUO begrenst je termijn dan op je draagkracht: 4% van je inkomen
+            boven de draagkrachtvrije voet (€ 28.405,73 in 2027), met je inkomen van twee jaar eerder. Leeg: je betaalt
+            het wettelijk maandbedrag.
+          </span>
+        </label>
+
+        <label className="field">
           <span className="field-label">DUO-rente</span>
           <span className="input-wrap">
             <input inputMode="decimal" value={draft.ratePct} onChange={set('ratePct')} />
@@ -138,6 +151,18 @@ export function InputForm({ draft, onChange }: Props) {
               <span className="affix">%</span>
             </span>
             <span className="hint">Per jaar. Gebruikt voor euro's van nu en voor het meegroeien van je surplus.</span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Inkomensgroei</span>
+            <span className="input-wrap">
+              <input inputMode="decimal" value={draft.incomeGrowthPct} onChange={set('incomeGrowthPct')} />
+              <span className="affix">%</span>
+            </span>
+            <span className="hint">
+              Per jaar, nominaal (standaard 2,4%: de loonstijging volgens de Commissie Parameters). Alleen gebruikt als je
+              een inkomen invult. De draagkrachtvrije voet groeit mee met 2,4%.
+            </span>
           </label>
 
           <label className="field checkbox">

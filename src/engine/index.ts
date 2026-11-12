@@ -1,4 +1,6 @@
 export * from './time';
 export * from './duo/annuity';
 export * from './duo/schedule';
+export * from './duo/draagkracht';
+export { createLoan, gridMonths, type Loan, type LoanMonth, type LoanTerms } from './duo/loan';
 export * from './strategy';

@@ -56,7 +56,7 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT }: Prop
       ) : (
         <p className="card empty">Vul je studieschuld, de start van je terugbetaalfase en je surplus in.</p>
       )}
-      <footer className="hint">Geen financieel advies. Rekent met een vaste DUO-rente, vaste rendementen, zonder draagkracht en zonder belasting.</footer>
+      <footer className="hint">Geen financieel advies. Rekent met een vaste DUO-rente, vaste rendementen en zonder belasting.</footer>
     </main>
   );
 }

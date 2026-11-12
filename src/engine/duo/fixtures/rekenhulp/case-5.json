@@ -1,0 +1,28 @@
+{
+  "id": "case-5",
+  "description": "€60k at 2.70%, full 35-year term, single with €50,000 income: draagkracht caps the termijn, ending in kwijtschelding",
+  "input": {
+    "debt": 60000,
+    "annualRatePct": 2.7,
+    "remainingMonths": 420,
+    "regime": "SF35",
+    "income": 50000,
+    "incomeGrowth": 0,
+    "voetGrowth": 0
+  },
+  "expected": {
+    "termijn": 71.98,
+    "totalPaid": 30231.98,
+    "kwijtgescholden": 102547.62
+  },
+  "tolerance": {
+    "termijnAbs": 0.5,
+    "totalPaidRel": 0.005,
+    "kwijtgescholdenRel": 0.005,
+    "kwijtgescholdenAbs": 0.5
+  },
+  "source": "DUO rekenhulp terugbetalen (gezinssituatie 'ik woon alleen', inkomen €50.000), https://duo.nl/particulier/rekenhulp-studiefinanciering.jsp#/nl/terugbetalen/ — expected values reproduced from the calculator's own client-side algorithm in https://duo.nl/apps/rekenhulp-sf/assets/index.js (sha256 aaebd0251632eab07e028cb73d3d600a834a6896a9a57c4a13c64a552a5e6212, functions Fx and zh) with the voet from https://duo.nl/particulier/wizard-studiefinanciering/normen.json (belastbaar_minimumloon 28405.73, sha256 4e8b651ce55b4f7b1ada32618382c9fedd7354e309272a321247866af538bdf6), and checked against a closed-form hand calculation from Wsf art. 6.10 / 6.15; NOT from an interactive run; no screenshot yet (follow-up)",
+  "retrieved": "2026-11-12",
+  "screenshot": null,
+  "derivation": "Wsf art. 6.10: draagkracht = 4% × (toetsingsinkomen − voet) per year; voet = 100% WML (single, no children) = €28,405.73 in 2027. (50,000 − 28,405.73) × 0.04 = €863.7708/yr = €71.9809/month. The rekenhulp holds income and voet constant (no growth, no t−2 lag effect), hence incomeGrowth = voetGrowth = 0. Monthly rate i = 1.027^(1/12) − 1 = 0.0022235. Wettelijk maandbedrag = 60,000 · i / (1 − (1 + i)^−420) = €219.91 > €71.98, so draagkracht caps the termijn from month 1. Each month payment = min(draagkracht, annuity on the balance over the months left) (rekenhulp zh; equivalent to art. 6.15's yearly recalculation here, because the annuity only grows while the cap binds, so the cap binds every month). Total paid = 420 × 71.9809 = €30,231.98. Restschuld (closed form) = 60,000 · (1 + i)^420 − 71.9809 · ((1 + i)^420 − 1) / i = 152,446.26 − 49,898.64 = €102,547.62, forgiven at the end of the term (art. 6.16)."
+}

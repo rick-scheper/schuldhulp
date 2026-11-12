@@ -64,3 +64,57 @@ describe('buildConstantRateSchedule', () => {
     expect(s.totalPaid).toBeCloseTo(s.debtAtFirstPayment + s.totalInterest - s.kwijtgescholden, 6);
   });
 });
+
+describe('buildConstantRateSchedule with draagkracht (#21)', () => {
+  const start = ym(2027, 1);
+  const base = { debt: 60_000, annualRate: 0.027, repaymentStart: start, today: start };
+
+  it('applies no cap without an income: the wettelijk maandbedrag', () => {
+    const none = buildConstantRateSchedule(base);
+    const nullIncome = buildConstantRateSchedule({ ...base, income: null });
+    expect(nullIncome).toEqual(none);
+    expect(none.draagkrachtCaps).toBe(false);
+    expect(none.termijn).toBe(none.wettelijkMaandbedrag);
+    expect(none.months.every((m) => m.draagkracht === null)).toBe(true);
+  });
+
+  it('caps the termijn at 4% of the income above the voet', () => {
+    const s = buildConstantRateSchedule({ ...base, income: { income: 50_000, growth: 0 } });
+    // 2027: income from the peiljaar 2025 (path extended backwards; no growth) and the 2027 voet
+    expect(s.termijn).toBeCloseTo(((50_000 - 28_405.73) * 0.04) / 12, 6);
+    expect(s.wettelijkMaandbedrag).toBeCloseTo(219.91, 2);
+    expect(s.draagkrachtCaps).toBe(true);
+  });
+
+  it('does not cap when the draagkracht exceeds the wettelijk maandbedrag', () => {
+    const s = buildConstantRateSchedule({ ...base, income: { income: 150_000, growth: 0.024 } });
+    expect(s.draagkrachtCaps).toBe(false);
+    expect(s.kwijtgescholden).toBe(0);
+    expect(s.totalPaid).toBeCloseTo(buildConstantRateSchedule(base).totalPaid, 6);
+  });
+
+  it('recalculates the wettelijk maandbedrag on 1 January after a capped year (art. 6.15)', () => {
+    const s = buildConstantRateSchedule({ ...base, income: { income: 50_000, growth: 0.024 } });
+    const kinds = s.recalculations.filter((r) => r.repaymentYear <= 4).map((r) => r.kind);
+    expect(kinds).toEqual(['statutory', 'draagkracht', 'draagkracht', 'statutory']);
+    expect(s.recalculations[1]!.month).toEqual(ym(2028, 1));
+    // the shortfall is spread over the months left, so the wettelijk maandbedrag rises
+    expect(s.recalculations[1]!.wettelijkMaandbedrag).toBeGreaterThan(s.recalculations[0]!.wettelijkMaandbedrag);
+  });
+
+  it('forgives what is left at the end of the term, and the totals add up', () => {
+    const s = buildConstantRateSchedule({ ...base, income: { income: 50_000, growth: 0.024 } });
+    expect(s.kwijtgescholden).toBeGreaterThan(0);
+    expect(s.months.at(-1)!.balanceAfter).toBe(s.kwijtgescholden);
+    expect(s.totalPaid).toBeCloseTo(s.debtAtFirstPayment + s.totalInterest - s.kwijtgescholden, 6);
+  });
+
+  it('follows the income path: faster income growth means a higher termijn and less kwijtschelding', () => {
+    const slow = buildConstantRateSchedule({ ...base, income: { income: 35_000, growth: 0.03 } });
+    const fast = buildConstantRateSchedule({ ...base, income: { income: 35_000, growth: 0.06 } });
+    expect(fast.months.at(-13)!.termijn).toBeGreaterThan(slow.months.at(-13)!.termijn);
+    expect(fast.kwijtgescholden).toBeLessThan(slow.kwijtgescholden);
+    // peiljaar t−2: in 2027 a faster-growing path means a lower income two years back
+    expect(fast.termijn).toBeLessThan(slow.termijn);
+  });
+});
