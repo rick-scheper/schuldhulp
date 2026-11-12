@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  breakEvenCurve,
   buildDuoSchedule,
   compareStrategies,
   constantMarket,
@@ -15,6 +16,9 @@ import { ResultsHeader } from './ResultsHeader';
 import { StrategyResult } from './StrategyResult';
 import { EMPTY_DRAFT, monteCarloInput, parseInputs, rateInfo, resolveRate, type InputDraft } from './inputs';
 import { useMonteCarlo } from './useMonteCarlo';
+import { RangeStrips } from './RangeStrips';
+import { BreakEvenChart } from './BreakEvenChart';
+import { buildDuel } from './duel';
 import { createBrowserMonteCarloClient, type MonteCarloClient } from '../worker/client';
 
 function currentMonth(): YearMonth {
@@ -59,6 +63,13 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
   const outcomes = plan && inputs && strategies && compareStrategies(plan, strategies, constantMarket(inputs.returns));
   // The Monte Carlo runs off the main thread (#25) and drives the verdict and duel (#26); the
   // fixed-return table stays as a folded explainer.
+  // The break-even curve is deterministic and cheap (about 60 runs of ≤ 420 months, ~10 ms), so it
+  // runs on the main thread; memoised on the inputs so a unit or challenger change does not redo it.
+  const breakEven = useMemo(
+    () => (plan && inputs && strategies ? breakEvenCurve({ plan, returns: inputs.returns, aflossen: strategies[0]! }) : null),
+    // plan, inputs and strategies all derive from draft and today.
+    [draft, today.year, today.month],
+  );
   const monteCarloState = useMonteCarlo(client, plan && inputs && strategies ? monteCarloInput(inputs, today, strategies) : null);
 
   return (
@@ -80,6 +91,15 @@ export function App({ today = currentMonth(), initialDraft = EMPTY_DRAFT, monteC
               box3={inputs.box3}
             />
           )}
+          {client && monteCarloState.result && (
+            <RangeStrips
+              summary={monteCarloState.result.summary}
+              scale={unit === 'real' ? monteCarloState.result.summary.deflatorEnd : 1}
+              selected={buildDuel(monteCarloState.result.summary, challenger).challenger.strategy.kind}
+              onSelect={setChallenger}
+            />
+          )}
+          {breakEven && <BreakEvenChart curve={breakEven} unit={unit} assumed={inputs.returns.equityReturn} />}
           <StrategyResult outcomes={outcomes} box3={inputs.box3} unit={unit} />
           <ScheduleResult schedule={schedule} periods={rate.periods} constantRate={draft.constantRate} />
         </>

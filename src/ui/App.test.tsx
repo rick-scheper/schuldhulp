@@ -465,5 +465,58 @@ describe('App', () => {
       fireEvent.click(screen.getByLabelText(/Huidig forfait blijft gelden/));
       await waitFor(() => expect(text('kwijtschelding-tax')).toMatch(/onder het huidige forfait is kwijtschelding onbelast/));
     });
+
+    describe('range strips + break-even curve (#27)', () => {
+      it('draws one range strip per strategy, with the note on what the ranges mean', async () => {
+        await fill();
+        for (const kind of ['aflossen', 'vastrentend', 'aandelen', 'mix']) {
+          const strip = screen.getByTestId(`strip-${kind}`);
+          expect(strip.querySelector('.strip-p1090')).toBeTruthy();
+          expect(strip.querySelector('.strip-p2575')).toBeTruthy();
+          expect(strip.querySelector('.strip-median')).toBeTruthy();
+          expect(strip.querySelector('.strip-base')).toBeTruthy(); // dashed line at the aflossen median
+          expect(text(`strip-median-${kind}`)).toMatch(/doorsnee € [\d.]+$/);
+        }
+        // the baseline cannot be the challenger, so its strip is not a button
+        expect(screen.getByTestId('strip-aflossen').tagName).toBe('DIV');
+        expect(text('range-note')).toBe(
+          'De bandbreedtes laten zien wat er binnen deze aannames kan gebeuren — niet of de aannames kloppen. Zie hieronder bij welk rendement het omslaat.',
+        );
+      });
+
+      it('a click on a strip makes that strategy the challenger in the duel', async () => {
+        await fill();
+        expect(screen.getByTestId('strip-aandelen').getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(screen.getByTestId('strip-vastrentend'));
+        expect(select().value).toBe('vastrentend');
+        expect(text('verdict')).toMatch(/vastrentend/);
+        expect(screen.getByTestId('strip-vastrentend').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('strip-aandelen').getAttribute('aria-pressed')).toBe('false');
+        // and the dropdown moves the selection on the strips
+        fireEvent.change(select(), { target: { value: 'mix' } });
+        expect(screen.getByTestId('strip-mix').getAttribute('aria-pressed')).toBe('true');
+      });
+
+      it('the strips follow the unit toggle', async () => {
+        await fill();
+        const real = euros('strip-median-aflossen');
+        fireEvent.click(screen.getByLabelText(/Nominaal/));
+        expect(euros('strip-median-aflossen') / real).toBeGreaterThan(1.9);
+      });
+
+      it('marks the assumption and the break-even, with the sentence in one decimal', async () => {
+        await fill();
+        expect(text('breakeven-sentence')).toMatch(/^Aandelen winnen zolang de index gemiddeld meer dan \d+,\d% per jaar oplevert\.$/);
+        expect(screen.getByTestId('breakeven-marker').textContent).toMatch(/gelijk bij \d+,\d%/);
+        expect(screen.getByTestId('assumed-marker').textContent).toBe('aanname 5,4%');
+        expect(text('return-caveat')).toMatch(/rendement is een aanname/);
+      });
+
+      it('says aandelen win even at 0% when the debt is forgiven', async () => {
+        await fill('60.000', '300', '30.000');
+        expect(text('breakeven-sentence')).toMatch(/^Aandelen winnen zelfs als de index gemiddeld 0% per jaar oplevert: .*kwijtgescholden/);
+        expect(screen.queryByTestId('breakeven-marker')).toBeNull();
+      });
+    });
   });
 });
