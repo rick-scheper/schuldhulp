@@ -139,6 +139,8 @@ DUO says it first calculates "hoeveel u per maand moet terugbetalen om de schuld
 
 **Model formula (inference, not published by DUO):** standard annuity, `M = D · r / (1 − (1 + r)^(−n))`, where r = annual rate / 12 and n = remaining months. DUO's actual statements may differ by cents because of 30/360 daily compounding ([art. 6.4 lid 4](https://wetten.overheid.nl/BWBR0011453/2026-08-01)).
 
+**Update (2026-11-09, #19):** DUO's own rekenhulp does not use r = annual rate / 12. Its client-side code converts the yearly rate as an effective annual rate, r = (1 + rate)^(1/12) − 1, and pays the annuity over the months left. On €30k at 2.70% over 420 months that gives €109.96 a month, against €110.49 with rate/12. The engine follows the rekenhulp; see `src/engine/duo/fixtures/rekenhulp/README.md`.
+
 **Payment actually due:** `min(M, draagkracht/12)`, where `draagkracht = pct × max(0, joint income(t−2) − voet)` ([art. 6.10 lid 3–4](https://wetten.overheid.nl/BWBR0011453/2026-08-01)). Example (my calculation): SF35, single, income €50,000 in the peiljaar, 2027 voet €28,405.73 gives (50,000 − 28,405.73) × 4% = €863.77 a year, or about €72 a month.
 
 ### 3.4 Voluntary extra repayment

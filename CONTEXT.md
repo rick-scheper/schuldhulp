@@ -5,6 +5,7 @@
 - **Aanloopfase** — the 2-year grace period after studies before repayment starts; interest accrues.
 - **Terugbetaalfase** — the repayment period (35 years under SF35).
 - **Wettelijk maandbedrag** — the statutory monthly payment DUO computes from the debt, rate, and remaining term (recalculated in repayment years 1 and 4, then every 5 years).
+- **Termijn** — the monthly amount actually due to DUO: the wettelijk maandbedrag, unless draagkracht caps it lower.
 - **Rentevaste periode** — the 5-year block during the terugbetaalfase in which the DUO rate stays fixed; a new rate applies at each block reset. Before the terugbetaalfase the rate resets yearly.
 - **Rentepad** — the sequence of DUO rates a borrower faces over the remaining term in one scenario, derived from that scenario's 5-year government bond yield.
 - **Draagkracht** — income-based cap on the monthly payment (SF35: 4% of income above a minimum-wage threshold).

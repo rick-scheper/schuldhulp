@@ -1,0 +1,5 @@
+node_modules
+dist
+*.tsbuildinfo
+# Owner's golden case (personal financial data, see #16): runs locally only
+src/**/fixtures/**/golden*.json

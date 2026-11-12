@@ -1,0 +1,26 @@
+{
+  "id": "case-3",
+  "description": "€30k at 0.00% (still in a 0% block), full 35-year term",
+  "input": {
+    "debt": 30000,
+    "annualRatePct": 0.0,
+    "remainingMonths": 420,
+    "regime": "SF35",
+    "income": null
+  },
+  "expected": {
+    "termijn": 71.43,
+    "totalPaid": 30000.0,
+    "kwijtgescholden": 0
+  },
+  "tolerance": {
+    "termijnAbs": 0.5,
+    "totalPaidRel": 0.005,
+    "kwijtgescholdenRel": 0.005,
+    "kwijtgescholdenAbs": 0.5
+  },
+  "source": "DUO rekenhulp terugbetalen, https://duo.nl/particulier/rekenhulp-studiefinanciering.jsp#/nl/terugbetalen/ — expected values reproduced by hand from the calculator's own client-side algorithm in https://duo.nl/apps/rekenhulp-sf/assets/index.js (sha256 aaebd0251632eab07e028cb73d3d600a834a6896a9a57c4a13c64a552a5e6212), NOT from an interactive run; no screenshot yet (follow-up)",
+  "retrieved": "2026-11-09",
+  "screenshot": null,
+  "derivation": "See README.md in this folder. Monthly rate i = (1 + rate)^(1/12) − 1; each month interest = balance × i and payment = balance × i / (1 − (1 + i)^−k) over the k months left (balance / k at 0%); total paid = sum of payments; rekenhulp restschuld without income = 0. Values rounded to cents."
+}
